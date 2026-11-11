@@ -25,6 +25,10 @@ with a clean architecture (ports & adapters), JWT, Flyway, and event-driven mess
 | `MYRIDE` | MyRide | Motorcycle | 1               |
 | `MYCAR`  | MyCar  | Car        | 4               |
 
+The code is what is stored in the `service_types` table. The API takes the **name** instead: `POST /trips` expects
+`"serviceType": "MyRide"` or `"MyCar"` (case-sensitive), and any other value, including `MYRIDE`, is rejected with
+`400`.
+
 Payment methods: `CASH`, `CREDIT_CARD`, `QRIS`.
 
 ## Tech stack
@@ -212,7 +216,7 @@ Responds with `201 Created` and a `Location: /trips/{id}` header:
 
 Possible errors:
 
-- `400 Bad Request` — validation failed, `serviceType` is not `MyRide` or `MyCar`, or pickup and destination are the
+- `400 Bad Request` — validation failed, `serviceType` is not exactly `MyRide` or `MyCar`, or pickup and destination are the
   same place.
 - `409 Conflict` — the customer still has an unfinished trip (`REQUESTED`, `DRIVER_ASSIGNED`, `DRIVER_ARRIVED`, or
   `ON_TRIP`). The response includes `activeTripId`, except when the other trip was created by a concurrent request.

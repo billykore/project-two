@@ -8,6 +8,12 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
 
 ## [Unreleased]
 
+### Fixed
+
+- `README.md` now explains that `POST /trips` takes the service type name (`MyRide`, `MyCar`), not the database code
+  (`MYRIDE`, `MYCAR`).
+- The 2026-11-11 entry about one unfinished trip per customer now lists `ON_TRIP` alongside the other statuses.
+
 ## 2026-11-11
 
 ### Added
@@ -37,8 +43,9 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
 
 - Accepting an offer now moves the trip to `DRIVER_ASSIGNED` and records `driver_assigned_at`; accepting a trip that
   is no longer `REQUESTED` returns `409`.
-- A customer can no longer book a second trip while one is `REQUESTED`, `DRIVER_ASSIGNED`, or `DRIVER_ARRIVED`
-  (previously only `ACTIVE` was checked), including when two requests arrive at the same time.
+- A customer can no longer book a second trip while one is unfinished (`REQUESTED`, `DRIVER_ASSIGNED`,
+  `DRIVER_ARRIVED`, or `ON_TRIP`), including when two requests arrive at the same time. Previously only `ACTIVE`
+  (now `ON_TRIP`) was checked.
 - An unknown `serviceType` returns `400` instead of a `500` from the `service_types` foreign key.
 - Booking a trip no longer fails with a `500` because the distance was always `0`.
 
