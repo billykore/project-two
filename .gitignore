@@ -80,3 +80,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Claude Code ###
+# Personal, machine-specific settings
+.claude/settings.local.json
