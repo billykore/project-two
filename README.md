@@ -95,7 +95,22 @@ docker run -d --name myapp-postgres -p 5432:5432 -e POSTGRES_PASSWORD=postgres p
 docker run -d --name myapp-kafka -p 9092:9092 apache/kafka:3.9.0
 ```
 
-### 3. Run the application
+### 3. Configure secrets
+
+Secrets are not committed. Copy the template and fill in the values:
+
+```bash
+cp .env.example .env
+```
+
+```bash
+echo "APP_JWT_SECRET=$(openssl rand -base64 32)" >> .env
+```
+
+Set `DB_PASSWORD` in `.env` too (`postgres` for the container above). `.env` is git-ignored and read by Spring on
+startup; real environment variables with the same names take precedence.
+
+### 4. Run the application
 
 ```bash
 ./mvnw spring-boot:run
@@ -104,7 +119,7 @@ docker run -d --name myapp-kafka -p 9092:9092 apache/kafka:3.9.0
 Flyway runs the migrations in `src/main/resources/db/migration` on startup, including the seed for the `MYRIDE` and
 `MYCAR` service types. The application listens on `http://localhost:8080`.
 
-### 4. Create a user to log in with
+### 5. Create a user to log in with
 
 There is no registration endpoint yet, so users are inserted directly into the database. The password must be a
 BCrypt hash, for example generated with `htpasswd`:
@@ -122,13 +137,21 @@ To let a user act as a driver, also add a row to `driver_profiles` with `verific
 
 ## Configuration
 
-All configuration lives in `src/main/resources/application.properties`.
+Configuration lives in `src/main/resources/application.properties`. Secrets and machine-specific values are read from
+environment variables or a local `.env` file (see `.env.example`):
+
+| Variable                  | Default                                     | Description                                |
+|---------------------------|---------------------------------------------|--------------------------------------------|
+| `DB_URL`                  | `jdbc:postgresql://localhost:5432/postgres` | PostgreSQL connection                      |
+| `DB_USERNAME`             | —                                           | PostgreSQL user                            |
+| `DB_PASSWORD`             | —                                           | PostgreSQL password                        |
+| `APP_JWT_SECRET`          | —                                           | HMAC secret, Base64, at least 32 bytes     |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092`                            | Kafka broker address                       |
+
+Other properties:
 
 | Property                         | Default                                     | Description                                |
 |----------------------------------|---------------------------------------------|--------------------------------------------|
-| `spring.datasource.url`          | `jdbc:postgresql://localhost:5432/postgres` | PostgreSQL connection                      |
-| `spring.kafka.bootstrap-servers` | `localhost:9092`                            | Kafka broker address                       |
-| `app.jwt.secret`                 | —                                           | HMAC secret, Base64, at least 32 bytes     |
 | `app.jwt.issuer`                 | `myapp`                                     | `iss` claim of the JWT                     |
 | `app.jwt.access-token-ttl`       | `10s`                                       | Access token lifetime                      |
 | `app.kafka.trip-events-topic`    | `trip-events`                               | Topic for trip domain events               |
@@ -136,9 +159,6 @@ All configuration lives in `src/main/resources/application.properties`.
 | `app.fare.per-meter`             | `30`                                        | Rate per meter (IDR)                       |
 | `app.fare.minimum`               | `10000`                                     | Minimum fare (IDR)                         |
 
-> The `app.jwt.secret` in the repo is for local development only. For any other environment, supply it through an
-> environment variable (`APP_JWT_SECRET`) and generate a new secret, for example with `openssl rand -base64 32`.
->
 > `access-token-ttl` is set to `10s` to make token expiry easy to test; raise it (for example to `15m`) when trying
 > the API by hand.
 

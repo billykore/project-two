@@ -4,6 +4,54 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### Secrets & local configuration ###
+# Real values live in .env (see .env.example); never commit them.
+.env
+.env.*
+!.env.example
+*.env
+# Local Spring overrides, e.g. application-local.properties or config/application.yml
+application-local.*
+application-*-local.*
+/config/
+# Keys, certificates and keystores
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+*.crt
+*.der
+id_rsa*
+id_ed25519*
+# Cloud and tool credentials
+credentials.json
+service-account*.json
+.aws/
+.netrc
+.npmrc
+.pgpass
+# Maven settings may contain repository passwords
+.mvn/settings.xml
+settings.xml
+
+### Logs, dumps and local data ###
+*.log
+logs/
+*.dump
+*.sql.gz
+*.hprof
+docker-data/
+volumes/
+
+### OS ###
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+
 ### STS ###
 .apt_generated
 .classpath
@@ -18,6 +66,7 @@ target/
 *.iws
 *.iml
 *.ipr
+out/
 
 ### NetBeans ###
 /nbproject/private/
