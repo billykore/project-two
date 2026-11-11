@@ -1,4 +1,4 @@
-package org.kore.myapp.common;
+package org.kore.myapp.api.handler;
 
 import org.kore.myapp.core.exception.InvalidCredentialsException;
 import org.kore.myapp.core.exception.UserNotFoundException;

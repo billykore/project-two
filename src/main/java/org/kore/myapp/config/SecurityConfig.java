@@ -24,7 +24,7 @@ import java.time.Clock;
 import java.util.Base64;
 
 @Configuration
-@EnableConfigurationProperties(JwtProperties.class)
+@EnableConfigurationProperties({JwtProperties.class, FareProperties.class})
 public class SecurityConfig {
 
     @Bean
