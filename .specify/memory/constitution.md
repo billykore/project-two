@@ -1,52 +1,41 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 1.0.0 → 2.0.0
-Bump rationale: MAJOR. Principle IV was redefined in a backward-incompatible way: it previously allowed
-Spring Data repository interfaces in `core`, and now forbids framework types in ports. Three hexagonal
-principles (VI–VIII) were also added.
+Version change: 2.0.0 → 2.0.1
+Bump rationale: PATCH. Clarifications with no change in intent, found while implementing feature
+001-hexagonal-architecture-compliance (recorded in its plan's Complexity Tracking):
+- IV: the role table now says where `@ConfigurationProperties` records live. Adapter-specific ones stay with
+  their adapter (the dependency rule forbids `adapter` → `config`); application-wide ones stay in `config`.
+- VIII: the mapping exception now names provider-specific mapping annotations (such as Hibernate's
+  `@JdbcTypeCode`, `@CreationTimestamp`, `@UpdateTimestamp`), provided nothing in the business rules, responses,
+  or events reads a value they generate.
 
-Modified principles:
-- IV. Hexagonal Boundaries → IV. Hexagonal Boundaries (Dependency Rule): package roles defined, allowed
-  dependency directions listed, `common` restricted, enforcement by an architecture test required
-
-Added principles:
-- VI. Ports Are Owned by the Application
-- VII. Adapters Translate, Never Decide
-- VIII. Domain Model at the Center
-
-Added sections: none (Technology & Quality Standards and Development Workflow & Quality Gates expanded)
-
+Modified principles: IV (role table wording), VIII (mapping exception wording)
+Added sections: none
 Removed sections: none
 
 Templates requiring updates:
-- ✅ .specify/templates/plan-template.md: Constitution Check covers IV, VI, VII, VIII; source tree shows this
-  project's hexagonal layout
-- ✅ .specify/templates/tasks-template.md: implementation order follows domain → ports → service → adapters
-- ✅ .claude/skills/speckit-implement/SKILL.md: core-development step follows the hexagonal order
-- ✅ .specify/templates/spec-template.md: reviewed; no change (specs stay technology-agnostic)
-- ✅ .specify/templates/checklist-template.md: reviewed; no change
-- ✅ README.md: reviewed; its Architecture section describes the current layout and stays accurate
+- ✅ .specify/templates/plan-template.md: reviewed; no change (Constitution Check wording still holds)
+- ✅ .specify/templates/tasks-template.md: reviewed; no change
+- ✅ .specify/templates/spec-template.md: reviewed; no change
+- ✅ README.md: Architecture section rewritten for the hexagonal layout by feature 001
 
-Follow-up TODOs (existing code that does not yet meet the principles; fix incrementally):
-- TODO(INTEGRATION_TEST_INFRA): Testcontainers is not set up yet (Principle III).
-- TODO(ARCH_TEST): add ArchUnit and `src/test/java/org/kore/myapp/ArchitectureTest.java` (Principle IV).
-- TODO(CORE_IMPORTS_SERVICE): `CreateTripCommand` lives in `service.command`, but `core/port/TripUseCase` and
-  `api/TripController` depend on it. Move it into `core` (Principles IV, VI).
-- TODO(FRAMEWORK_PORTS): the repository ports in `core/port` extend `JpaRepository`, and `TripOfferRepository`
-  carries a JPQL `@Query`. Make them plain interfaces implemented by Spring Data adapters under
-  `adapter/persistence` (Principle VI).
-- TODO(PORT_LOGIC): `GeneralHasher` holds a static helper and `TripRepository` a default method. Ports contain
-  declarations only (Principle VI).
-- TODO(INFRA_EXCEPTIONS): `TripService` catches `DataIntegrityViolationException` and Hibernate's
-  `ConstraintViolationException`. Translate them in the persistence adapter (Principle VII).
-- TODO(EVENT_PORT): `TripService` uses Spring's `ApplicationEventPublisher`, and `core/event/TripEventRelay` is a
-  Spring `@Component` with `@TransactionalEventListener`. Publish through a port and move the relay to `adapter`
-  (Principles VII, VIII).
-- TODO(CLOCK): `TripService`, `OfferService` and `Trip.requestedAt` call `Instant.now()`. Inject a `Clock`
-  (Principle VIII).
-- TODO(COMMON_PACKAGE): `common/FareCalculator` is a domain service that depends on `config`, and
-  `common/ProblemDetailWriter` is HTTP-specific. Move them to `core` and `api` respectively (Principle IV).
+Previous amendment (1.0.0 → 2.0.0, MAJOR): Principle IV redefined to forbid framework types in ports; Principles
+VI–VIII added.
+
+Follow-up TODOs:
+- TODO(INTEGRATION_TEST_INFRA): RESOLVED by 001-hexagonal-architecture-compliance. Testcontainers (PostgreSQL,
+  Kafka) is set up, every persistence and event adapter has real-technology tests, and every endpoint has a
+  `@WebMvcTest`.
+- TODO(ARCH_TEST): RESOLVED by 001-hexagonal-architecture-compliance (`ArchitectureTest`, rules AR-01..AR-09).
+- TODO(CORE_IMPORTS_SERVICE): RESOLVED by 001 (`CreateTripCommand` is in `core/valueobject`).
+- TODO(FRAMEWORK_PORTS): RESOLVED by 001 (plain ports, Spring Data in `adapter/persistence`).
+- TODO(PORT_LOGIC): RESOLVED by 001 (`TokenHasher` port; no default or static methods in ports).
+- TODO(INFRA_EXCEPTIONS): RESOLVED by 001 (`JpaTripRepository` translates the active-trip constraint).
+- TODO(EVENT_PORT): RESOLVED by 001 (single `EventPublisher` port; `adapter/kafka/AfterCommitEventPublisher`).
+- TODO(CLOCK): RESOLVED by 001 (injected `Clock` and `IdGenerator`).
+- TODO(COMMON_PACKAGE): RESOLVED by 001 (`FareCalculator` in `core/domainservice`, `ProblemDetailWriter` in
+  `api/handler`; `common` removed).
 -->
 
 # myapp Constitution
@@ -123,8 +112,8 @@ Package roles under `org.kore.myapp`:
 | `core`    | Domain model (`entity`, `valueobject`, `exception`, domain services) and all ports      |
 | `service` | Application services: implement inbound ports, orchestrate domain objects and out-ports |
 | `api`     | Inbound (driving) adapter for HTTP: controllers, request/response DTOs, error handlers  |
-| `adapter` | Outbound (driven) adapters, grouped by technology: `persistence`, `kafka`, `security`   |
-| `config`  | Composition root: Spring wiring, security setup, `@ConfigurationProperties`             |
+| `adapter` | Outbound (driven) adapters, grouped by technology: `persistence`, `kafka`, `security`. An adapter's own `@ConfigurationProperties` record lives in its package and is enabled from `config` |
+| `config`  | Composition root: Spring wiring, security setup, application-wide `@ConfigurationProperties` |
 | `common`  | Technology-neutral helpers with no business rules and no framework dependencies         |
 
 - Allowed dependencies: `api` → `core`; `service` → `core`; `adapter` → `core`; `config` → any package.
@@ -214,8 +203,10 @@ Business rules live in the domain, and the domain stays free of infrastructure.
   from plain values rather than Spring beans.
 - Domain code (`core/entity`, `core/valueobject`, domain services) MUST NOT depend on Spring beans or annotations
   (`@Component`, `@Transactional`, `@EventListener`), `ApplicationEventPublisher`, servlet, HTTP, or Kafka types.
-  JPA mapping annotations on entities are the one permitted exception, so the project does not need a duplicate
-  persistence model. Queries and constraint names stay in adapters.
+  Persistence mapping annotations on entities are the one permitted exception, so the project does not need a
+  duplicate persistence model. This covers JPA annotations and provider-specific mapping annotations (such as
+  Hibernate's `@JdbcTypeCode`, `@CreationTimestamp`, `@UpdateTimestamp`), provided no business rule, response, or
+  event reads a value they generate. Queries and constraint names stay in adapters.
 - Time and generated identifiers that affect behavior MUST come from an injected `Clock` or a port, and be passed
   into domain methods as arguments (as `Trip.assignDriver(driver, now)` already does). `Instant.now()` and
   `UUID.randomUUID()` MUST NOT be called inside domain logic.
@@ -277,4 +268,4 @@ own, and it is the part of the system that carries the business value.
   exceptions live in the plan's Complexity Tracking table and SHOULD be paid down with a follow-up task.
 - Runtime development guidance (how to run, configure, and call the app) lives in `README.md`.
 
-**Version**: 2.0.0 | **Ratified**: 2026-11-11 | **Last Amended**: 2026-11-11
+**Version**: 2.0.1 | **Ratified**: 2026-11-11 | **Last Amended**: 2026-11-11

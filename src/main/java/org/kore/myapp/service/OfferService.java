@@ -12,6 +12,7 @@ import org.kore.myapp.core.valueobject.TripEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -27,10 +28,14 @@ public class OfferService implements TripOfferUseCase {
 
     private final EventPublisher events;
 
+    private final Clock clock;
+
+    private final IdGenerator ids;
+
     @Override
     @Transactional
     public Trip accept(UUID tripId, long driverUserId) {
-        Instant now = Instant.now();
+        Instant now = clock.instant();
 
         DriverProfile driver = drivers.findByUserId(driverUserId)
                 .orElseThrow(() -> new DriverNotFoundException(driverUserId));
@@ -44,16 +49,16 @@ public class OfferService implements TripOfferUseCase {
 
 
         trip.assignDriver(driver, now);
-        trips.save(trip);
+        trips.update(trip);
 
         driver.startTrip();
-        drivers.save(driver);
+        drivers.update(driver);
 
         offer.accept(now);
-        offers.save(offer);
+        offers.update(offer);
 
         events.publish(new TripEvent.DriverAssigned(
-                UUID.randomUUID(),
+                ids.newId(),
                 now,
                 trip.getId(),
                 driver.getId()
@@ -69,10 +74,10 @@ public class OfferService implements TripOfferUseCase {
                 .orElseThrow(() -> new DriverNotFoundException(driverUserId));
 
         offers.findPending(tripId, driver.getId()).ifPresent(offer -> {
-            Instant now = Instant.now();
+            Instant now = clock.instant();
             offer.reject(now);
-            offers.save(offer);
-            events.publish(new TripEvent.Rejected(UUID.randomUUID(), now, tripId));
+            offers.update(offer);
+            events.publish(new TripEvent.Rejected(ids.newId(), now, tripId));
         });
     }
 }

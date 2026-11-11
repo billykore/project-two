@@ -1,16 +1,25 @@
 package org.kore.myapp.core.port;
 
 import org.kore.myapp.core.entity.DriverProfile;
-import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
 /**
- * Repository for {@link DriverProfile} related persistence operations.
- * <p>
- * Inherits the standard CRUD operations from {@link JpaRepository}.
+ * Stores and finds {@link DriverProfile}s.
  */
-public interface DriverProfileRepository extends JpaRepository<DriverProfile, Long> {
+public interface DriverProfileRepository {
 
-    Optional<DriverProfile> findByUserId(Long userId);
+    /**
+     * @param userId id of the user who is the driver.
+     * @return the driver's profile, or empty if the user is not a driver.
+     */
+    Optional<DriverProfile> findByUserId(long userId);
+
+    /**
+     * Stores changes to an existing driver profile.
+     *
+     * @param driver a profile that was loaded from this repository.
+     * @return the stored profile.
+     */
+    DriverProfile update(DriverProfile driver);
 }

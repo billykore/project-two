@@ -1,13 +1,17 @@
 package org.kore.myapp.core.port;
 
 import org.kore.myapp.core.entity.ServiceType;
-import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
 
 /**
- * Repository for {@link ServiceType} related persistence operations.
- * <p>
- * Inherits the standard CRUD operations from {@link JpaRepository}.
+ * Finds the {@link ServiceType}s customers can order.
  */
-public interface ServiceTypeRepository extends JpaRepository<ServiceType, Long> {
+public interface ServiceTypeRepository {
 
+    /**
+     * @param name name of the service type, such as {@code MyRide}; matched exactly, case-sensitive.
+     * @return the active service type with that name, or empty if there is none.
+     */
+    Optional<ServiceType> findActiveByName(String name);
 }

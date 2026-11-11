@@ -1,7 +1,5 @@
 package org.kore.myapp.core.valueobject;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.time.Instant;
 import java.util.UUID;
 
@@ -17,7 +15,6 @@ public sealed interface TripEvent extends Event {
     UUID tripId();
 
     @Override
-    @JsonProperty("aggregateId")
     default String aggregateId() {
         return tripId().toString();
     }

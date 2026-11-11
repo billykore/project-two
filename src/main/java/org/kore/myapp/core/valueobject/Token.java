@@ -1,23 +1,17 @@
 package org.kore.myapp.core.valueobject;
 
 import lombok.Builder;
-import lombok.Getter;
-import lombok.Setter;
 
 import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Token generates by token issuer.
+ * An access token issued to a logged-in user.
+ *
+ * @param sessionId   public id of the login session the token belongs to.
+ * @param accessToken the encoded token the client sends back.
+ * @param expiresAt   when the token stops being accepted.
  */
 @Builder
-@Getter
-@Setter
-public class Token {
-
-    private UUID sessionId;
-
-    private String accessToken;
-
-    private Instant expiresAt;
+public record Token(UUID sessionId, String accessToken, Instant expiresAt) {
 }
