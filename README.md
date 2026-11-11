@@ -41,23 +41,42 @@ Payment methods: `CASH`, `CREDIT_CARD`, `QRIS`.
 
 ## Architecture
 
-The code follows a *hexagonal / ports & adapters* style. Business logic lives in `core` and `service`, while technical
-details (HTTP, Kafka, JWT, BCrypt) sit at the edges.
+The code follows a *hexagonal / ports & adapters* architecture. The domain and its ports sit in the middle, adapters
+for HTTP, PostgreSQL, Kafka and JWT sit around the edge, and every source-code dependency points inward.
 
 ```
 src/main/java/org/kore/myapp
-├── api/          # HTTP layer: controllers, request/response DTOs, exception handlers (ProblemDetail)
-├── service/      # Use case implementations: AuthService, TripService, OfferService
-├── core/
-│   ├── entity/       # JPA entities: User, Session, DriverProfile, ServiceType, Trip, TripOffer
-│   ├── valueobject/  # Enums & value objects: TripStatus, OfferStatus, Location, Money, TripEvent, ...
-│   ├── port/         # Use case & repository interfaces (ports)
-│   ├── event/        # TripEventRelay: forwards events to Kafka after commit
-│   └── exception/    # Domain exceptions
-├── adapter/      # Port implementations: KafkaPublisher, JwtTokenIssuer, BcryptHasher, JSON 401 entry point
-├── config/       # SecurityConfig, FareProperties
-└── common/       # FareCalculator, ProblemDetailWriter
+├── core/                 # The hexagon: no Spring, Kafka, servlet or JSON types
+│   ├── entity/           #   Entities and their invariants: Trip, TripOffer, DriverProfile, ServiceType, User, Session
+│   ├── valueobject/      #   Immutable values, commands and events: Location, Money, CreateTripCommand, TripEvent, ...
+│   ├── domainservice/    #   Rules built from plain values: FareCalculator
+│   ├── exception/        #   Domain exceptions
+│   └── port/             #   Inbound ports (*UseCase) and outbound ports (TripRepository, EventPublisher, IdGenerator, ...)
+├── service/              # Application services: implement the use cases, own the transactions
+├── api/                  # Inbound HTTP adapter
+│   ├── controller/       #   Controllers: map a request to a command, call one use case, map the result
+│   ├── request/, response/  # DTOs
+│   ├── handler/          #   Domain exceptions → RFC 9457 Problem Details; JSON 401 entry point
+│   └── security/         #   Reads the caller's user id from the JWT
+├── adapter/              # Outbound adapters, one package per technology
+│   ├── persistence/      #   PostgreSQL via Spring Data JPA; translates constraint violations into domain exceptions
+│   ├── kafka/            #   Publishes events to Kafka after the transaction commits; decides the message JSON
+│   └── security/         #   JWT issuing, BCrypt password hashing, SHA-256 token hashing
+└── config/               # Composition root: Spring wiring, security, clock, id generator, configuration properties
 ```
+
+| Package    | May depend on                                    |
+|------------|--------------------------------------------------|
+| `core`     | nothing else in the application                  |
+| `service`  | `core`                                           |
+| `api`      | `core` (use-case ports only, never outbound ports) |
+| `adapter`  | `core`; each adapter package independently of the others |
+| `config`   | anything (it wires everything together)          |
+
+These rules come from the project constitution (`.specify/memory/constitution.md`, Principles IV, VI, VII, VIII) and
+are enforced by `ArchitectureTest`, so a change that breaks them fails `./mvnw test`. Time and generated ids come from
+an injected `Clock` and `IdGenerator`, so the domain and application services are unit-tested without any
+infrastructure.
 
 ### Booking flow
 
@@ -71,7 +90,7 @@ Customer                  Backend                              Kafka (trip-event
     │                        │◄─────────────────────────────────────────────────────────────┤
     │                        │ trip → DRIVER_ASSIGNED,                │                     │
     │                        │ offer → ACCEPTED, driver → ON_TRIP     │                     │
-    │                        │ ─────────────────────────────────────► │ DriverAssigned      │
+    │                        │ ── after commit ─────────────────────► │ DriverAssigned      │
 ```
 
 Trip lifecycle: `REQUESTED` → `DRIVER_ASSIGNED` → `DRIVER_ARRIVED` → `ON_TRIP` → `COMPLETED`, or `CANCELLED`
@@ -79,6 +98,10 @@ Trip lifecycle: `REQUESTED` → `DRIVER_ASSIGNED` → `DRIVER_ARRIVED` → `ON_T
 
 Events are sent to the `trip-events` topic as JSON keyed by `tripId`, so all events of one trip land in the same
 partition and keep their order. Event types: `Requested`, `DriverAssigned`, `Rejected`, `Completed`, `Cancelled`.
+
+Every event is sent only after the database transaction that caused it commits, so no event is ever published for
+a change that was rolled back. If Kafka can't be reached at that point, the failure is logged and the request still
+succeeds; the event is not retried.
 
 ## Running locally
 
@@ -122,6 +145,10 @@ startup; real environment variables with the same names take precedence.
 
 Flyway runs the migrations in `src/main/resources/db/migration` on startup, including the seed for the `MYRIDE` and
 `MYCAR` service types. The application listens on `http://localhost:8080`.
+
+> **Existing databases:** if your database already has the tables but no `flyway_schema_history` table (for example
+> because it was set up before Flyway ran on startup), Flyway refuses to start against the non-empty schema. Either
+> recreate the database, or baseline it once with `SPRING_FLYWAY_BASELINE_ON_MIGRATE=true ./mvnw spring-boot:run`.
 
 ### 5. Create a user to log in with
 
@@ -170,6 +197,10 @@ Other properties:
 
 Every endpoint except `/auth/**` requires an `Authorization: Bearer <accessToken>` header. Errors are returned as
 [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`).
+
+A missing, invalid, or expired token gets `401 Unauthorized` with a `WWW-Authenticate: Bearer` header. `POST /trips`
+and `POST /driver/offers/{tripId}/accept` also answer `401` when an otherwise valid token has no numeric user id in
+its `sub` claim, since the request can't be attributed to a user. Tokens issued by `/auth/login` always carry one.
 
 | Method | Path                               | Description                                  |
 |--------|------------------------------------|----------------------------------------------|
@@ -252,8 +283,25 @@ driver must be `APPROVED` before going `ONLINE`) are also enforced by database c
 ./mvnw test
 ```
 
-The unit tests (`CoordinateTest`, `TripTest`, `TripServiceTest`) run without external dependencies. `MyAppTests` loads the full
-Spring context, so it needs a running PostgreSQL.
+The test suite needs a running container runtime (Docker Desktop, Colima, or Podman with a Docker-compatible
+socket). Integration tests start PostgreSQL 16 and Kafka 3.9 with [Testcontainers](https://testcontainers.com/), so you
+don't need to start PostgreSQL or Kafka yourself to run the tests. Without a container runtime those tests fail rather
+than skip.
+
+The tests never read your `.env`: test-only settings, including a fake JWT signing key, come from
+`src/test/resources/config/application.properties`.
+
+| Kind | Examples | Needs |
+|------|----------|-------|
+| Domain and application-service unit tests | `TripTest`, `FareCalculatorTest`, `TripServiceTest`, `OfferServiceTest` | nothing (fixed `Clock` and `IdGenerator`) |
+| Architecture test | `ArchitectureTest`, `ArchitectureRulesSelfTest` | nothing |
+| Web-layer tests, one per controller | `TripControllerTest`, `AuthControllerTest`, … | nothing (`@WebMvcTest`) |
+| Persistence adapter integration tests | `JpaTripRepositoryIT`, … | PostgreSQL container |
+| Event adapter integration test | `AfterCommitEventPublisherIT` | Kafka container |
+| Event payload contract | `EventJsonContractTest` against `src/test/resources/events/*.json` | nothing |
+
+`ArchitectureTest` fails the build when a change breaks the hexagonal dependency rules described in
+[Architecture](#architecture).
 
 ## Feature status
 
@@ -264,6 +312,9 @@ Done:
 - [x] Straight-line distance and fare calculation
 - [x] Driver accepts a trip offer
 - [x] Publishing domain events to Kafka after commit
+- [x] Hexagonal architecture enforced by an architecture test
+- [x] Integration tests against real PostgreSQL and Kafka (Testcontainers) for the persistence and event adapters
+- [x] Web-layer tests for every endpoint
 
 Not yet:
 
@@ -274,4 +325,3 @@ Not yet:
 - [ ] A scheduler to expire stale offers
 - [ ] Refresh tokens and logout (session revocation)
 - [ ] Idempotency key on trip creation
-- [ ] Integration tests (for example with Testcontainers)

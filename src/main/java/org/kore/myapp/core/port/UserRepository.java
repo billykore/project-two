@@ -1,19 +1,17 @@
 package org.kore.myapp.core.port;
 
 import org.kore.myapp.core.entity.User;
-import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
 /**
- * Repository for {@link User} related persistence operations.
+ * Finds {@link User}s.
  */
-public interface UserRepository extends JpaRepository<User, Long> {
+public interface UserRepository {
+
     /**
-     * Find a user by its username.
-     *
      * @param username username of the user.
-     * @return a {@link User}.
+     * @return the user, or empty if there is none with that username.
      */
     Optional<User> findByUsername(String username);
 }

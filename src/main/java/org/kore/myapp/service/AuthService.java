@@ -25,6 +25,8 @@ public class AuthService implements AuthUseCase {
 
     private final PasswordHasher passwordHasher;
 
+    private final TokenHasher tokenHasher;
+
     private final Clock clock;
 
     @Override
@@ -39,12 +41,12 @@ public class AuthService implements AuthUseCase {
         Token token = tokenIssuer.issue(user);
         Session session = Session.builder()
                 .userId(user.getId())
-                .publicId(token.getSessionId())
-                .tokenHash(GeneralHasher.sha256Hex(token.getAccessToken()))
-                .expiredAt(token.getExpiresAt())
+                .publicId(token.sessionId())
+                .tokenHash(tokenHasher.hash(token.accessToken()))
+                .expiredAt(token.expiresAt())
                 .createdAt(clock.instant())
                 .build();
-        sessionRepository.save(session);
+        sessionRepository.add(session);
         return token;
     }
 }

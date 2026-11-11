@@ -8,8 +8,50 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
 
 ## [Unreleased]
 
+### Added
+
+- Testcontainers-based tests (PostgreSQL 16, Kafka 3.9). Running `./mvnw test` now requires a container runtime
+  such as Docker; no hand-started PostgreSQL or Kafka is needed.
+- Golden JSON fixtures for every trip event payload (`src/test/resources/events/`), so a change to an event's JSON
+  fails the build.
+- `ArchitectureTest` (ArchUnit) enforcing the hexagonal dependency rules AR-01..AR-09, plus a self-test proving each
+  rule fires.
+- Tests for every layer: web-layer tests for all four controllers, PostgreSQL integration tests for every persistence
+  adapter (including two concurrent trip requests for one customer), a Kafka integration test for event delivery,
+  tests for the JWT, BCrypt and SHA-256 adapters, and unit tests for `OfferService` and `AuthService`.
+- Spec Kit artifacts for the refactor in `specs/001-hexagonal-architecture-compliance/` (spec, plan, research, data
+  model, contracts, tasks).
+
+### Changed
+
+- The code now follows hexagonal architecture (ports and adapters), enforced by `ArchitectureTest` (ArchUnit): ports in
+  `core/port` are plain interfaces implemented by adapters grouped per technology (`adapter/persistence`,
+  `adapter/kafka`, `adapter/security`); trip-creation rules live in `Trip.request`; time and ids come from an injected
+  `Clock` and `IdGenerator`; the `common` package is gone. No endpoint or event payload changed.
+- "Service type" has a single definition, the `service_types` table: `POST /trips` looks the name up there instead
+  of mapping it through a separate enum. Stored ids and responses are unchanged.
+- Tests no longer depend on a developer's `.env`: test-only settings come from
+  `src/test/resources/config/application.properties`.
+- Project constitution amended to 2.0.1: clarifies where adapter-specific `@ConfigurationProperties` live and that
+  provider-specific persistence mapping annotations (such as Hibernate's) are allowed on entities.
+- Offer events (`DriverAssigned`, `Rejected`) are now published only after the database transaction commits, like
+  `Requested`. Previously they were sent while the transaction was still open, so an event could describe a change
+  that was then rolled back.
+
+### Removed
+
+- The unused trip `idempotencyKey`: the API filled it with a random value on every request and nothing read it, so it
+  never deduplicated anything.
+
 ### Fixed
 
+- A token without a numeric `sub` claim now gets `401 Unauthorized` on `POST /trips` and
+  `POST /driver/offers/{tripId}/accept`. Previously `POST /trips` tried to book the trip for customer `0` and both
+  endpoints could fail with `500`.
+- Flyway migrations now actually run on startup. Spring Boot 4 moved Flyway auto-configuration into its own module,
+  and the project depended only on `flyway-core`, so a fresh database was never migrated and the application failed
+  schema validation. An existing database without a `flyway_schema_history` table must be recreated or baselined
+  once (see README, "Run the application").
 - `README.md` now explains that `POST /trips` takes the service type name (`MyRide`, `MyCar`), not the database code
   (`MYRIDE`, `MYCAR`).
 - The 2026-11-11 entry about one unfinished trip per customer now lists `ON_TRIP` alongside the other statuses.

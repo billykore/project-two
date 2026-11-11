@@ -7,7 +7,6 @@ import org.kore.myapp.core.valueobject.VehicleType;
 @Entity
 @Table(name = "service_types")
 @Getter
-@Setter
 @Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)

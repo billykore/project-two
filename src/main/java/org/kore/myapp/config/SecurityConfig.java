@@ -1,8 +1,8 @@
 package org.kore.myapp.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
-import org.kore.myapp.adapter.JsonAuthenticationEntryPoint;
-import org.kore.myapp.adapter.JwtProperties;
+import org.kore.myapp.adapter.security.JwtProperties;
+import org.kore.myapp.api.handler.JsonAuthenticationEntryPoint;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,7 +20,6 @@ import org.springframework.security.web.SecurityFilterChain;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
-import java.time.Clock;
 import java.util.Base64;
 
 @Configuration
@@ -82,8 +81,4 @@ public class SecurityConfig {
         return converter;
     }
 
-    @Bean
-    Clock clock() {
-        return Clock.systemUTC();
-    }
 }
