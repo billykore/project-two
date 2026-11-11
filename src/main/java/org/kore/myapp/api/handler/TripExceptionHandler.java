@@ -16,7 +16,9 @@ public class TripExceptionHandler {
                 HttpStatus.CONFLICT, "You already have an active trip"
         );
         pd.setTitle("Active trip exists");
-        pd.setProperty("activeTripId", ex.getActiveTripId());
+        if (ex.getActiveTripId() != null) {
+            pd.setProperty("activeTripId", ex.getActiveTripId());
+        }
         return pd;
     }
 

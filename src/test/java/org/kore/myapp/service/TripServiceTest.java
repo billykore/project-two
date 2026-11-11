@@ -14,8 +14,11 @@ import org.kore.myapp.core.valueobject.PaymentMethod;
 import org.kore.myapp.core.valueobject.ServiceType;
 import org.kore.myapp.core.valueobject.TripStatus;
 import org.kore.myapp.service.command.CreateTripCommand;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 
+import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -87,6 +90,36 @@ class TripServiceTest {
         assertThatThrownBy(() -> tripService.create(command(MONAS, SENAYAN)))
                 .isInstanceOf(ActiveTripExistsException.class);
         verify(tripRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void createRejectsUnknownServiceType() {
+        CreateTripCommand command = new CreateTripCommand(
+                CUSTOMER_ID, UUID.randomUUID(), ServiceType.UNKNOWN, MONAS, SENAYAN, PaymentMethod.CASH);
+
+        assertThatThrownBy(() -> tripService.create(command))
+                .isInstanceOf(InvalidTripException.class);
+        verify(tripRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void createReportsActiveTripWhenConcurrentInsertHitsUniqueIndex() {
+        when(tripRepository.saveAndFlush(any(Trip.class))).thenThrow(new DataIntegrityViolationException(
+                "duplicate key",
+                new ConstraintViolationException("duplicate key", new SQLException(), TripService.ACTIVE_TRIP_CONSTRAINT)));
+
+        assertThatThrownBy(() -> tripService.create(command(MONAS, SENAYAN)))
+                .isInstanceOf(ActiveTripExistsException.class);
+    }
+
+    @Test
+    void createRethrowsOtherIntegrityViolations() {
+        DataIntegrityViolationException other = new DataIntegrityViolationException(
+                "fk violation",
+                new ConstraintViolationException("fk violation", new SQLException(), "trips_service_type_id_fkey"));
+        when(tripRepository.saveAndFlush(any(Trip.class))).thenThrow(other);
+
+        assertThatThrownBy(() -> tripService.create(command(MONAS, SENAYAN))).isSameAs(other);
     }
 
     @Test

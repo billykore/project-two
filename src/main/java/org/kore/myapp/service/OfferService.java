@@ -43,7 +43,7 @@ public class OfferService implements TripOfferUseCase {
                 .orElseThrow(() -> new TripNotFoundException(tripId));
 
 
-        trip.assignDriver(driver);
+        trip.assignDriver(driver, now);
         trips.save(trip);
 
         driver.startTrip();

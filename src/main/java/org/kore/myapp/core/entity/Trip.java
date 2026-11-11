@@ -7,7 +7,6 @@ import org.hibernate.annotations.UpdateTimestamp;
 import org.kore.myapp.core.valueobject.CancelledBy;
 import org.kore.myapp.core.valueobject.TripStatus;
 
-import java.sql.Driver;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -101,7 +100,17 @@ public class Trip {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public void assignDriver(DriverProfile driver) {
+    /**
+     * Assigns a driver to this trip and moves it to {@link TripStatus#DRIVER_ASSIGNED}.
+     *
+     * @throws IllegalStateException if the trip is no longer waiting for a driver.
+     */
+    public void assignDriver(DriverProfile driver, Instant now) {
+        if (status != TripStatus.REQUESTED) {
+            throw new IllegalStateException("Trip " + id + " cannot be assigned a driver in status " + status);
+        }
         this.driverId = driver.getId();
+        this.status = TripStatus.DRIVER_ASSIGNED;
+        this.driverAssignedAt = now;
     }
 }

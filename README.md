@@ -11,9 +11,9 @@ with a clean architecture (ports & adapters), JWT, Flyway, and event-driven mess
 - **Authentication** — log in with username and password (BCrypt), receive a JWT (HS256), and record the session in
   the database.
 - **Trip booking** — a customer creates a trip with a pickup point, destination, service type, and payment method.
-  A customer can have at most one unfinished trip.
-- **Trip offers** — a driver accepts a trip offer; the trip gets a driver and the driver's status changes to
-  `ON_TRIP`.
+  A customer can have at most one unfinished trip, enforced by both the service and a unique index in the database.
+- **Trip offers** — a driver accepts a trip offer; the trip moves to `DRIVER_ASSIGNED` and the driver's status
+  changes to `ON_TRIP`.
 - **Domain events** — every important trip change is published to Kafka after the database transaction commits.
 - **Fares** — computed from the straight-line distance between pickup and destination (haversine formula) times a
   per-meter rate, with a minimum fare.
@@ -65,8 +65,8 @@ Customer                  Backend                              Kafka (trip-event
     │◄───────── 201 ─────────┤                                        │                     │
     │                        │        POST /driver/offers/{tripId}/accept                   │
     │                        │◄─────────────────────────────────────────────────────────────┤
-    │                        │ assign driver, offer → ACCEPTED,       │                     │
-    │                        │ driver → ON_TRIP                       │                     │
+    │                        │ trip → DRIVER_ASSIGNED,                │                     │
+    │                        │ offer → ACCEPTED, driver → ON_TRIP     │                     │
     │                        │ ─────────────────────────────────────► │ DriverAssigned      │
 ```
 
@@ -192,9 +192,10 @@ Responds with `201 Created` and a `Location: /trips/{id}` header:
 
 Possible errors:
 
-- `400 Bad Request` — validation failed, or pickup and destination are the same place.
+- `400 Bad Request` — validation failed, `serviceType` is not `MyRide` or `MyCar`, or pickup and destination are the
+  same place.
 - `409 Conflict` — the customer still has an unfinished trip (`REQUESTED`, `DRIVER_ASSIGNED`, `DRIVER_ARRIVED`, or
-  `ON_TRIP`); the response includes `activeTripId`.
+  `ON_TRIP`). The response includes `activeTripId`, except when the other trip was created by a concurrent request.
 
 ### Driver accepts an offer
 
@@ -202,6 +203,9 @@ Possible errors:
 curl -X POST http://localhost:8080/driver/offers/$TRIP_ID/accept \
   -H "Authorization: Bearer $DRIVER_TOKEN"
 ```
+
+Returns the trip with status `DRIVER_ASSIGNED`. If the trip is no longer `REQUESTED` (for example it was cancelled or
+another driver took it), the response is `409 Conflict`.
 
 ## Database schema
 
@@ -224,7 +228,7 @@ driver must be `APPROVED` before going `ONLINE`) are also enforced by database c
 ./mvnw test
 ```
 
-The unit tests (`CoordinateTest`, `TripServiceTest`) run without external dependencies. `MyAppTests` loads the full
+The unit tests (`CoordinateTest`, `TripTest`, `TripServiceTest`) run without external dependencies. `MyAppTests` loads the full
 Spring context, so it needs a running PostgreSQL.
 
 ## Feature status
