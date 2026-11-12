@@ -41,6 +41,21 @@ class PersistenceFixtures {
                 .getSingleResult()).longValue();
     }
 
+    /**
+     * Like {@link #insertUser(String)}, but with the contact details registration requires.
+     */
+    long insertUser(String usernamePrefix, String email, String phone) {
+        String username = usernamePrefix + "-" + UUID.randomUUID();
+        return ((Number) entityManager.createNativeQuery(
+                        "insert into users (name, username, password, email, phone) "
+                                + "values (?1, ?2, 'hash', ?3, ?4) returning id")
+                .setParameter(1, "User " + username)
+                .setParameter(2, username)
+                .setParameter(3, email)
+                .setParameter(4, phone)
+                .getSingleResult()).longValue();
+    }
+
     String username(long userId) {
         return (String) entityManager.createNativeQuery("select username from users where id = ?1")
                 .setParameter(1, userId)

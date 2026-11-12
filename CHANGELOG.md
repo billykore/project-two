@@ -10,6 +10,10 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
 
 ### Added
 
+- `POST /auth/register`: self-service customer registration with a username, password, name, email address, and
+  phone number. Usernames, emails (ignoring case), and phone numbers are unique, including under simultaneous
+  requests; invalid input and conflicts are answered with Problem Details naming each field. Migration `V11` adds
+  nullable `email` and `phone` columns with unique indexes to `users`. Specs in `specs/002-user-registration/`.
 - Testcontainers-based tests (PostgreSQL 16, Kafka 3.9). Running `./mvnw test` now requires a container runtime
   such as Docker; no hand-started PostgreSQL or Kafka is needed.
 - Golden JSON fixtures for every trip event payload (`src/test/resources/events/`), so a change to an event's JSON
@@ -24,6 +28,11 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
 
 ### Changed
 
+- Imports are explicit: all wildcard imports (`import lombok.*;`, `import jakarta.persistence.*;`, …) were replaced
+  by the classes each file uses. `ImportStyleTest` fails the build if one comes back, and `.editorconfig` stops IDEs
+  from generating them.
+- A missing or non-JSON request body now gets a `400` Problem Details response titled `Malformed request` on every
+  endpoint, instead of Spring's default error body.
 - The code now follows hexagonal architecture (ports and adapters), enforced by `ArchitectureTest` (ArchUnit): ports in
   `core/port` are plain interfaces implemented by adapters grouped per technology (`adapter/persistence`,
   `adapter/kafka`, `adapter/security`); trip-creation rules live in `Trip.request`; time and ids come from an injected

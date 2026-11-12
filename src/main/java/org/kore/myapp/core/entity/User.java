@@ -1,7 +1,17 @@
 package org.kore.myapp.core.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import org.kore.myapp.core.valueobject.RegisterUserCommand;
 
 import java.time.LocalDateTime;
 
@@ -25,7 +35,36 @@ public class User {
     @Column(nullable = false, length = 100)
     private String name;
 
-    /** Set by the database when the user row is inserted; the application never inserts users. */
+    /** Lowercase; null only for accounts created before registration collected it. */
+    @Column(unique = true, length = 254)
+    private String email;
+
+    /** International form, such as {@code +6281234567890}; null only for accounts created before registration. */
+    @Column(unique = true, length = 16)
+    private String phone;
+
+    /** Set by the database when the user row is inserted; no rule or response reads it. */
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    /**
+     * Builds a new, unsaved customer account.
+     *
+     * @param command      the validated registration input.
+     * @param passwordHash the one-way hash of the command's password.
+     * @return a user without an id or creation time; the database assigns both.
+     * @throws IllegalArgumentException if {@code passwordHash} is null or blank.
+     */
+    public static User register(RegisterUserCommand command, String passwordHash) {
+        if (passwordHash == null || passwordHash.isBlank()) {
+            throw new IllegalArgumentException("Password hash is required");
+        }
+        return User.builder()
+                .username(command.username())
+                .password(passwordHash)
+                .name(command.name())
+                .email(command.email())
+                .phone(command.phone())
+                .build();
+    }
 }

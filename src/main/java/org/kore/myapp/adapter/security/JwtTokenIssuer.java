@@ -6,7 +6,11 @@ import org.kore.myapp.core.entity.User;
 import org.kore.myapp.core.exception.TokenIssuanceException;
 import org.kore.myapp.core.port.TokenIssuer;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
-import org.springframework.security.oauth2.jwt.*;
+import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.security.oauth2.jwt.JwtEncodingException;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
