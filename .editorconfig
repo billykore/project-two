@@ -1,0 +1,9 @@
+root = true
+
+[*.java]
+indent_style = space
+indent_size = 4
+# Import only what a file uses: never collapse imports into a wildcard (IntelliJ / Eclipse).
+ij_java_class_count_to_use_import_on_demand = 999
+ij_java_names_count_to_use_import_on_demand = 999
+ij_java_imports_layout = *,|,javax.**,java.**,|,$*

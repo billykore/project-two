@@ -8,6 +8,8 @@ with a clean architecture (ports & adapters), JWT, Flyway, and event-driven mess
 
 ## Main features
 
+- **Registration** — sign up with a username, password, name, email address, and phone number; usernames, emails,
+  and phone numbers are unique.
 - **Authentication** — log in with username and password (BCrypt), receive a JWT (HS256), and record the session in
   the database.
 - **Trip booking** — a customer creates a trip with a pickup point, destination, service type, and payment method.
@@ -152,19 +154,16 @@ Flyway runs the migrations in `src/main/resources/db/migration` on startup, incl
 
 ### 5. Create a user to log in with
 
-There is no registration endpoint yet, so users are inserted directly into the database. The password must be a
-BCrypt hash, for example generated with `htpasswd`:
+Register through the API (see [Register](#register) for the rules):
 
 ```bash
-htpasswd -bnBC 14 "" secret123 | tr -d ':\n'
+curl -X POST http://localhost:8080/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username": "budi", "password": "secret123", "name": "Budi Santoso", "email": "budi@example.com", "phone": "+6281234567890"}'
 ```
 
-```sql
-INSERT INTO users (name, username, password)
-VALUES ('Budi', 'budi', '<bcrypt-hash-from-the-command-above>');
-```
-
-To let a user act as a driver, also add a row to `driver_profiles` with `verification_status` set to `APPROVED`.
+Registered users are customers. To let a user act as a driver, also add a row to `driver_profiles` with
+`verification_status` set to `APPROVED`; there is no endpoint for driver onboarding yet.
 
 ## Configuration
 
@@ -196,7 +195,8 @@ Other properties:
 ## API
 
 Every endpoint except `/auth/**` requires an `Authorization: Bearer <accessToken>` header. Errors are returned as
-[RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`).
+[RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`). On any endpoint, a
+missing or non-JSON request body gets `400` with the title `Malformed request`.
 
 A missing, invalid, or expired token gets `401 Unauthorized` with a `WWW-Authenticate: Bearer` header. `POST /trips`
 and `POST /driver/offers/{tripId}/accept` also answer `401` when an otherwise valid token has no numeric user id in
@@ -204,10 +204,40 @@ its `sub` claim, since the request can't be attributed to a user. Tokens issued 
 
 | Method | Path                               | Description                                  |
 |--------|------------------------------------|----------------------------------------------|
+| `POST` | `/auth/register`                   | Create a customer account                    |
 | `POST` | `/auth/login`                      | Log in and receive an access token           |
 | `POST` | `/trips`                           | Customer books a trip                        |
 | `POST` | `/driver/offers/{tripId}/accept`   | Driver accepts a trip offer                  |
 | `GET`  | `/hello/{username}`                | Sample endpoint for checking a token         |
+
+### Register
+
+```bash
+curl -X POST http://localhost:8080/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username": "budi", "password": "secret123", "name": "Budi Santoso", "email": "budi@example.com", "phone": "+6281234567890"}'
+```
+
+All five fields are required:
+
+| Field      | Rule                                                                                               |
+|------------|----------------------------------------------------------------------------------------------------|
+| `username` | 3-50 characters: lowercase letters, digits, `.`, `_`, `-`; unique                                  |
+| `password` | 8-72 characters and at most 72 bytes in UTF-8; not the same as the username; spaces are kept      |
+| `name`     | 1-100 characters after trimming                                                                    |
+| `email`    | valid address, at most 254 characters; stored in lowercase; unique, ignoring case                  |
+| `phone`    | international form, `+` and 8-15 digits, such as `+6281234567890`; unique                          |
+
+`201 Created` returns the new account (never the password) and no token; log in separately:
+
+```json
+{ "id": 42, "username": "budi", "name": "Budi Santoso", "email": "budi@example.com", "phone": "+6281234567890" }
+```
+
+- `400` (`Invalid registration`) lists every invalid field in `errors`: `[{"field": "password", "message": "must be at
+  least 8 characters"}]`.
+- `409` (`Registration conflict`) lists the fields already in use in `conflicts`, for example `["username", "email"]`.
+  Email and phone numbers are not verified, and logging in still uses the username only.
 
 ### Log in
 
@@ -266,7 +296,7 @@ another driver took it), the response is `409 Conflict`.
 
 | Table                 | Contents                                                                      |
 |-----------------------|-------------------------------------------------------------------------------|
-| `users`               | User accounts (customers and drivers)                                         |
+| `users`               | User accounts (customers and drivers), with unique username, email, and phone |
 | `sessions`            | Login sessions; stores a SHA-256 hash of the token, not the token itself      |
 | `driver_profiles`     | Driver data: license, verification status, availability (`OFFLINE`/`ONLINE`/`ON_TRIP`) |
 | `service_types`       | Service types (`MYRIDE`, `MYCAR`)                                             |
@@ -315,10 +345,11 @@ Done:
 - [x] Hexagonal architecture enforced by an architecture test
 - [x] Integration tests against real PostgreSQL and Kafka (Testcontainers) for the persistence and event adapters
 - [x] Web-layer tests for every endpoint
+- [x] Customer registration with unique username, email, and phone
 
 Not yet:
 
-- [ ] Customer registration and driver onboarding
+- [ ] Driver onboarding
 - [ ] Road-route distance (currently a straight line, so shorter than the real distance)
 - [ ] Finding the nearest drivers and creating `trip_offers`
 - [ ] Endpoints to reject an offer, mark driver arrival, and start, complete, or cancel a trip
