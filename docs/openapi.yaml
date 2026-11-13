@@ -1,0 +1,814 @@
+openapi: 3.1.0
+info:
+  description: |-
+    HTTP API of the myapp ride-hailing backend.
+
+    **Authentication.** Every endpoint except `/auth/**` requires `Authorization: Bearer <accessToken>`, where the token comes from `POST /auth/login`. A token sent to `/auth/**` is ignored, even when it is expired or invalid.
+
+    **Errors.** All errors are [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`). A missing or non-JSON request body on any endpoint gets `400` titled `Malformed request`.
+  title: myapp — Ride-Hailing Backend API
+  version: 0.1.0
+servers:
+- description: Local development
+  url: http://localhost:8080
+security:
+- bearerAuth: []
+tags:
+- description: Driver actions on trip offers.
+  name: Driver
+- description: Sample endpoint for checking a token.
+  name: Sample
+- description: Customer trip booking.
+  name: Trips
+- description: "Registration, login, and password reset. Public."
+  name: Auth
+paths:
+  /auth/login:
+    post:
+      description: Identifies the account by username only (not email or phone) and
+        records a login session.
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+          description: Logged in.
+        "400":
+          content:
+            application/problem+json:
+              examples:
+                blank:
+                  description: blank
+                  value:
+                    type: about:blank
+                    title: Bad Request
+                    status: 400
+                    detail: "username: must not be blank"
+                    instance: /auth/login
+                malformed:
+                  $ref: "#/components/examples/MalformedRequest"
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`username` or `password` is blank, or the body is malformed."
+        "401":
+          content:
+            application/problem+json:
+              examples:
+                invalidCredentials:
+                  description: invalidCredentials
+                  value:
+                    type: about:blank
+                    title: Unauthorized
+                    status: 401
+                    detail: Invalid credentials
+                    instance: /auth/login
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unknown username or wrong password (the same answer for both).
+      security: []
+      summary: Log in and receive an access token
+      tags:
+      - Auth
+  /auth/password-reset/confirm:
+    post:
+      description: |-
+        Replaces the password of the account identified by `email` or `phone` (either contact detail of the account works, whichever one received the code). On success the code is used up and every session of the account ends; no token is issued.
+
+        Checks run in this order: input rules, then the code, then whether the new password equals the username or one of the last 3 passwords (the current one included). A refused new password does not use up the code or count as a wrong attempt. After 5 wrong codes the current code is invalidated.
+      operationId: confirmPasswordReset
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmPasswordResetRequest"
+        required: true
+      responses:
+        "204":
+          description: "Password replaced, code used up, all sessions of the account\
+            \ ended."
+        "400":
+          content:
+            application/problem+json:
+              examples:
+                badInput:
+                  description: badInput
+                  value:
+                    type: about:blank
+                    title: Invalid password reset
+                    status: 400
+                    detail: "code: must be 6 digits; newPassword: must be at least\
+                      \ 8 characters"
+                    instance: /auth/password-reset/confirm
+                    errors:
+                    - field: code
+                      message: must be 6 digits
+                    - field: newPassword
+                      message: must be at least 8 characters
+                invalidCode:
+                  description: invalidCode
+                  value:
+                    type: about:blank
+                    title: Invalid or expired code
+                    status: 400
+                    detail: Invalid or expired code
+                    instance: /auth/password-reset/confirm
+                malformed:
+                  $ref: "#/components/examples/MalformedRequest"
+                passwordReused:
+                  description: passwordReused
+                  value:
+                    type: about:blank
+                    title: Invalid password reset
+                    status: 400
+                    detail: "newPassword: must not be one of your last 3 passwords"
+                    instance: /auth/password-reset/confirm
+                    errors:
+                    - field: newPassword
+                      message: must not be one of your last 3 passwords
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/FieldErrorsProblem"
+                - $ref: "#/components/schemas/Problem"
+          description: "Either the input or new password is refused (`Invalid password\
+            \ reset`, with `errors`), or the code cannot be used (`Invalid or expired\
+            \ code`, the single answer for a wrong, expired, used, replaced, or exhausted\
+            \ code and for an unknown contact)."
+        "503":
+          content:
+            application/problem+json:
+              examples:
+                busy:
+                  description: busy
+                  value:
+                    type: about:blank
+                    title: Password reset busy
+                    status: 503
+                    detail: Another password reset for this account is in progress;
+                      try again
+                    instance: /auth/password-reset/confirm
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Another reset of the same account was still running past the
+            lock timeout. Nothing changed; retry.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+                example: 1
+              style: simple
+      security: []
+      summary: Replace the password using a reset code
+      tags:
+      - Auth
+  /auth/password-reset/request:
+    post:
+      description: |-
+        Sends a 6-digit code to the given email address or phone number if it belongs to an account. Give exactly one of `email` and `phone`; it also selects the channel.
+
+        The answer is the same `202` whether or not an account exists, a code was sent, or a limit applied, so it never reveals which contacts are registered. A code is valid for 5 minutes and usable once; a new request replaces the previous code. An account gets at most 1 code per 60 seconds and 5 per rolling hour.
+
+        Real email and SMS delivery is not connected yet: by default nothing is sent, and in development `APP_PASSWORD_RESET_LOG_CODES=true` writes the code to the application log.
+      operationId: requestPasswordReset
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestPasswordResetRequest"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasswordResetRequestedResponse"
+          description: Accepted. Identical for every well-formed request.
+        "400":
+          content:
+            application/problem+json:
+              examples:
+                badPhone:
+                  description: badPhone
+                  value:
+                    type: about:blank
+                    title: Invalid password reset
+                    status: 400
+                    detail: "phone: must be in international format, e.g. +6281234567890"
+                    instance: /auth/password-reset/request
+                    errors:
+                    - field: phone
+                      message: "must be in international format, e.g. +6281234567890"
+                eitherOr:
+                  description: eitherOr
+                  value:
+                    type: about:blank
+                    title: Invalid password reset
+                    status: 400
+                    detail: "email: provide either email or phone; phone: provide\
+                      \ either email or phone"
+                    instance: /auth/password-reset/request
+                    errors:
+                    - field: email
+                      message: provide either email or phone
+                    - field: phone
+                      message: provide either email or phone
+                malformed:
+                  $ref: "#/components/examples/MalformedRequest"
+              schema:
+                $ref: "#/components/schemas/FieldErrorsProblem"
+          description: "The contact is malformed, or both or neither of `email` and\
+            \ `phone` were given."
+      security: []
+      summary: Send a one-time password-reset code
+      tags:
+      - Auth
+  /auth/register:
+    post:
+      description: "Creates an ordinary customer account. Does not log in or return\
+        \ a token; call `POST /auth/login` next. Every rule is checked together, so\
+        \ a `400` lists every invalid field. Unknown properties (such as `role`) are\
+        \ ignored."
+      operationId: register
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+          description: Account created. The body never contains the password.
+        "400":
+          content:
+            application/problem+json:
+              examples:
+                invalid:
+                  description: invalid
+                  value:
+                    type: about:blank
+                    title: Invalid registration
+                    status: 400
+                    detail: "password: must be at least 8 characters; phone: must\
+                      \ be in international format, e.g. +6281234567890"
+                    instance: /auth/register
+                    errors:
+                    - field: password
+                      message: must be at least 8 characters
+                    - field: phone
+                      message: "must be in international format, e.g. +6281234567890"
+                malformed:
+                  $ref: "#/components/examples/MalformedRequest"
+              schema:
+                $ref: "#/components/schemas/FieldErrorsProblem"
+          description: "One or more fields break a rule, or the body is malformed."
+        "409":
+          content:
+            application/problem+json:
+              examples:
+                conflict:
+                  description: conflict
+                  value:
+                    type: about:blank
+                    title: Registration conflict
+                    status: 409
+                    detail: username already taken; email already registered
+                    instance: /auth/register
+                    conflicts:
+                    - username
+                    - email
+              schema:
+                $ref: "#/components/schemas/ConflictProblem"
+          description: "The username, email, or phone already belongs to an account.\
+            \ Nothing is created."
+      security: []
+      summary: Create a customer account
+      tags:
+      - Auth
+  /driver/offers/{tripId}/accept:
+    post:
+      description: |-
+        The calling driver (the token's numeric `sub`) accepts the pending offer for the trip. The trip moves to `DRIVER_ASSIGNED` and the driver's availability to `ON_TRIP`.
+
+        **Not yet defined:** when the caller has no driver profile, has no pending offer for the trip, or the trip does not exist, no exception handler maps the error, so the response is not a defined Problem Details answer yet.
+      operationId: acceptOffer
+      parameters:
+      - in: path
+        name: tripId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TripResponse"
+          description: Offer accepted; the trip is now `DRIVER_ASSIGNED`.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "The trip is no longer `REQUESTED` (for example cancelled,\
+            \ or another driver took it)."
+      summary: Driver accepts a trip offer
+      tags:
+      - Driver
+  /hello/{username}:
+    get:
+      operationId: hello
+      parameters:
+      - in: path
+        name: username
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HelloResponse"
+          description: Greeting for the user.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          content:
+            application/problem+json:
+              examples:
+                notFound:
+                  description: notFound
+                  value:
+                    type: about:blank
+                    title: Not Found
+                    status: 404
+                    detail: User with username nobody not found
+                    instance: /hello/nobody
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: No user has that username.
+      summary: Sample endpoint for checking a token
+      tags:
+      - Sample
+  /trips:
+    post:
+      description: "Books a trip for the calling customer (the token's numeric `sub`).\
+        \ A customer can have at most one unfinished trip (`REQUESTED`, `DRIVER_ASSIGNED`,\
+        \ `DRIVER_ARRIVED`, or `ON_TRIP`). The fare is computed from the straight-line\
+        \ distance between pickup and destination."
+      operationId: createTrip
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTripRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TripResponse"
+          description: Trip created.
+          headers:
+            Location:
+              description: "Path of the new trip, `/trips/{id}`."
+              schema:
+                type: string
+              style: simple
+        "400":
+          content:
+            application/problem+json:
+              examples:
+                invalidTrip:
+                  description: invalidTrip
+                  value:
+                    type: about:blank
+                    title: Invalid trip
+                    status: 400
+                    detail: "Unknown service type, expected MyRide or MyCar"
+                    instance: /trips
+                malformed:
+                  $ref: "#/components/examples/MalformedRequest"
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Validation failed, `serviceType` is not exactly `MyRide` or\
+            \ `MyCar`, pickup and destination are the same place, or the body is malformed."
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          content:
+            application/problem+json:
+              examples:
+                activeTrip:
+                  description: activeTrip
+                  value:
+                    type: about:blank
+                    title: Active trip exists
+                    status: 409
+                    detail: You already have an active trip
+                    instance: /trips
+                    activeTripId: 3f8a6c2e-9d41-4f7b-8a3e-0c1d2e3f4a5b
+              schema:
+                $ref: "#/components/schemas/ActiveTripProblem"
+          description: "The customer still has an unfinished trip. `activeTripId`\
+            \ is included, except when the other trip was created by a concurrent\
+            \ request."
+      summary: Customer books a trip
+      tags:
+      - Trips
+components:
+  examples:
+    MalformedRequest:
+      summary: Missing or non-JSON body
+      value:
+        detail: Request body is missing or is not valid JSON
+        status: 400
+        title: Malformed request
+        type: about:blank
+  responses:
+    Unauthenticated:
+      content:
+        application/problem+json:
+          example:
+            detail: "Token is missing, invalid, or expired"
+            status: 401
+            title: Unauthenticated
+            type: about:blank
+          schema:
+            $ref: "#/components/schemas/Problem"
+      description: "The token is missing, invalid, or expired, or it has no numeric\
+        \ user id in `sub`."
+      headers:
+        WWW-Authenticate:
+          schema:
+            example: Bearer
+  schemas:
+    ActiveTripProblem:
+      type: object
+      description: Problem Details for a customer who still has an unfinished trip.
+      properties:
+        activeTripId:
+          type: string
+          format: uuid
+          description: The unfinished trip; absent when it was created by a concurrent
+            request.
+        detail:
+          type: string
+        instance:
+          type: string
+        status:
+          type: integer
+          format: int32
+        title:
+          type: string
+        type:
+          type: string
+          example: about:blank
+      required:
+      - status
+      - title
+      - type
+    ConfirmPasswordResetRequest:
+      type: object
+      description: "Exactly one of `email` and `phone`, plus `code` and `newPassword`."
+      properties:
+        code:
+          type: string
+          description: The 6-digit code; leading zeros are significant.
+          example: "004213"
+          pattern: "^[0-9]{6}$"
+        email:
+          type: string
+          format: email
+          description: Email address of the account.
+          example: budi@example.com
+          maxLength: 254
+        newPassword:
+          type: string
+          description: Same rules as the registration password; must not equal the
+            username or any of the account's last 3 passwords.
+          example: newsecret99
+          maxLength: 72
+          minLength: 8
+        phone:
+          type: string
+          description: Phone number of the account.
+          example: "+6281234567890"
+          pattern: "^\\+[0-9]{8,15}$"
+      required:
+      - code
+      - newPassword
+    ConflictProblem:
+      type: object
+      description: Problem Details naming the fields already in use.
+      properties:
+        conflicts:
+          type: array
+          description: "Fields already in use, ordered username, email, phone. In\
+            \ a simultaneous-registration race it may name only one field."
+          items:
+            type: string
+            enum:
+            - username
+            - email
+            - phone
+        detail:
+          type: string
+        instance:
+          type: string
+        status:
+          type: integer
+          format: int32
+        title:
+          type: string
+        type:
+          type: string
+          example: about:blank
+      required:
+      - conflicts
+      - status
+      - title
+      - type
+    CreateTripRequest:
+      type: object
+      properties:
+        destination:
+          $ref: "#/components/schemas/LocationRequest"
+        paymentMethod:
+          type: string
+          enum:
+          - CASH
+          - CREDIT_CARD
+          - QRIS
+          example: QRIS
+        pickup:
+          $ref: "#/components/schemas/LocationRequest"
+        serviceType:
+          type: string
+          description: Must be exactly `MyRide` or `MyCar`.
+          enum:
+          - MyRide
+          - MyCar
+          example: MyRide
+          minLength: 1
+      required:
+      - destination
+      - paymentMethod
+      - pickup
+      - serviceType
+    FieldError:
+      type: object
+      properties:
+        field:
+          type: string
+          description: Property name as the client sends it.
+        message:
+          type: string
+      required:
+      - field
+      - message
+    FieldErrorsProblem:
+      type: object
+      description: Problem Details listing every invalid field.
+      properties:
+        detail:
+          type: string
+        errors:
+          type: array
+          description: "Every invalid field, once each, in field order."
+          items:
+            $ref: "#/components/schemas/FieldError"
+        instance:
+          type: string
+        status:
+          type: integer
+          format: int32
+        title:
+          type: string
+        type:
+          type: string
+          example: about:blank
+      required:
+      - errors
+      - status
+      - title
+      - type
+    HelloResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Hello Budi
+      required:
+      - message
+    LocationRequest:
+      type: object
+      properties:
+        address:
+          type: string
+          example: Monas
+          maxLength: 255
+          minLength: 0
+        latitude:
+          type: number
+          format: double
+          example: -6.2088
+          maximum: 90.0
+          minimum: -90.0
+        longitude:
+          type: number
+          format: double
+          example: 106.8456
+          maximum: 180.0
+          minimum: -180.0
+    LoginRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          example: secret123
+          minLength: 1
+        username:
+          type: string
+          example: budi
+          minLength: 1
+      required:
+      - password
+      - username
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: "HS256 JWT to send as `Authorization: Bearer <accessToken>`."
+          example: eyJhbGciOiJIUzI1NiJ9...
+        expiresAt:
+          type: string
+          format: date-time
+          example: 2026-11-11T09:00:10Z
+        sessionId:
+          type: string
+          format: uuid
+          example: 5b0c6f0e-6f5a-4d6e-9a59-1f1f0f3f4a11
+      required:
+      - accessToken
+      - expiresAt
+      - sessionId
+    PasswordResetRequestedResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "If an account exists for this contact, a code has been sent to\
+            \ it."
+      required:
+      - message
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details.
+      properties:
+        detail:
+          type: string
+        instance:
+          type: string
+        status:
+          type: integer
+          format: int32
+        title:
+          type: string
+        type:
+          type: string
+          example: about:blank
+      required:
+      - status
+      - title
+      - type
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: "Stored in lowercase; unique, ignoring case."
+          example: budi@example.com
+          maxLength: 254
+        name:
+          type: string
+          description: 1-100 characters after trimming.
+          example: Budi Santoso
+          maxLength: 100
+          minLength: 1
+        password:
+          type: string
+          description: 8-72 characters and at most 72 bytes in UTF-8; not the same
+            as the username; kept exactly as typed. No composition rules.
+          example: secret123
+          maxLength: 72
+          minLength: 8
+        phone:
+          type: string
+          description: "International form, `+` and 8-15 digits, no separators. Unique."
+          example: "+6281234567890"
+          pattern: "^\\+[0-9]{8,15}$"
+        username:
+          type: string
+          description: "3-50 lowercase letters, digits, `.`, `_`, `-`. Unique."
+          example: budi
+          pattern: "^[a-z0-9._-]{3,50}$"
+      required:
+      - email
+      - name
+      - password
+      - phone
+      - username
+    RegisterResponse:
+      type: object
+      properties:
+        email:
+          type: string
+          example: budi@example.com
+        id:
+          type: integer
+          format: int64
+          example: 42
+        name:
+          type: string
+          example: Budi Santoso
+        phone:
+          type: string
+          example: "+6281234567890"
+        username:
+          type: string
+          example: budi
+      required:
+      - email
+      - id
+      - name
+      - phone
+      - username
+    RequestPasswordResetRequest:
+      type: object
+      description: Exactly one of `email` and `phone`; a blank value counts as absent.
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address of the account; trimmed and compared ignoring
+            case.
+          example: budi@example.com
+          maxLength: 254
+        phone:
+          type: string
+          description: "Phone number of the account, `+` and 8-15 digits."
+          example: "+6281234567890"
+          pattern: "^\\+[0-9]{8,15}$"
+    TripResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 3f8a6c2e-9d41-4f7b-8a3e-0c1d2e3f4a5b
+        serviceType:
+          type: integer
+          format: int64
+          description: "Id of the service type (1 = MyRide, 2 = MyCar in the seed\
+            \ data)."
+          example: 1
+        status:
+          type: string
+          enum:
+          - REQUESTED
+          - DRIVER_ASSIGNED
+          - DRIVER_ARRIVED
+          - ON_TRIP
+          - COMPLETED
+          - CANCELLED
+          example: REQUESTED
+      required:
+      - id
+      - serviceType
+      - status
+  securitySchemes:
+    bearerAuth:
+      bearerFormat: JWT
+      description: HS256 JWT from `POST /auth/login`. Its `sub` is the numeric user
+        id.
+      scheme: bearer
+      type: http
