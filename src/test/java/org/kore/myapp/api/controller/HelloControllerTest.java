@@ -44,6 +44,14 @@ class HelloControllerTest {
                 .andExpect(jsonPath("$.title").value("Unauthenticated"));
     }
 
+    /** Ignoring tokens on the public {@code /auth/**} paths must not weaken protected endpoints. */
+    @Test
+    void anInvalidTokenOnAProtectedEndpointIsStillUnauthenticated() throws Exception {
+        mvc.perform(get("/hello/{username}", "budi").header("Authorization", "Bearer not-a-jwt"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.title").value("Unauthenticated"));
+    }
+
     @Test
     void unknownUserIsNotFound() throws Exception {
         when(helloUseCase.sayHello("nobody")).thenThrow(new UserNotFoundException("nobody"));

@@ -1,7 +1,9 @@
 package org.kore.myapp.core.port;
 
 import org.kore.myapp.core.entity.User;
+import org.kore.myapp.core.exception.PasswordResetBusyException;
 import org.kore.myapp.core.exception.RegistrationConflictException;
+import org.kore.myapp.core.valueobject.Contact;
 
 import java.util.Optional;
 
@@ -43,4 +45,22 @@ public interface UserRepository {
      *                                       (for example a concurrent registration); names the field concerned.
      */
     User add(User user);
+
+    /**
+     * Finds the account whose email (lowercase) or phone equals the contact's address, and locks it against other
+     * password-reset operations until the current transaction ends. Must be called inside a transaction.
+     *
+     * @param contact a normalized contact.
+     * @return the account, or empty if none has that address.
+     * @throws PasswordResetBusyException if the lock is not acquired within the lock timeout.
+     */
+    Optional<User> findForPasswordReset(Contact contact);
+
+    /**
+     * Stores changes to an existing user.
+     *
+     * @param user a user loaded from this repository.
+     * @return the stored user.
+     */
+    User update(User user);
 }

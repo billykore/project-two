@@ -28,7 +28,7 @@ public class RegistrationExceptionHandler {
         ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         pd.setTitle("Invalid registration");
         List<Map<String, String>> errors = ex.getErrors().stream()
-                .map(e -> Map.of("field", e.field().jsonName(), "message", e.message()))
+                .map(e -> Map.of("field", e.field(), "message", e.message()))
                 .toList();
         pd.setProperty("errors", errors);
         return pd;

@@ -42,7 +42,7 @@ public class Session {
     @Column(name = "expires_at", nullable = false)
     private Instant expiredAt;
 
-    @Column(name = "revoked_at", nullable = false)
+    @Column(name = "revoked_at")
     private Instant revokedAt;
 
     @Column(name = "created_at", nullable = false)

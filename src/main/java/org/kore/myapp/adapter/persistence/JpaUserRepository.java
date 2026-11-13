@@ -1,11 +1,14 @@
 package org.kore.myapp.adapter.persistence;
 
-import org.hibernate.exception.ConstraintViolationException;
+import jakarta.persistence.EntityManager;
 import org.kore.myapp.core.entity.User;
+import org.kore.myapp.core.exception.PasswordResetBusyException;
 import org.kore.myapp.core.exception.RegistrationConflictException;
 import org.kore.myapp.core.port.UserRepository;
+import org.kore.myapp.core.valueobject.Contact;
 import org.kore.myapp.core.valueobject.RegistrationField;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -28,8 +31,15 @@ public class JpaUserRepository implements UserRepository {
 
     private final SpringDataUserRepository users;
 
-    JpaUserRepository(SpringDataUserRepository users) {
+    private final EntityManager entityManager;
+
+    private final PasswordResetLockProperties lockProperties;
+
+    JpaUserRepository(SpringDataUserRepository users, EntityManager entityManager,
+                      PasswordResetLockProperties lockProperties) {
         this.users = users;
+        this.entityManager = entityManager;
+        this.lockProperties = lockProperties;
     }
 
     @Override
@@ -71,21 +81,43 @@ public class JpaUserRepository implements UserRepository {
         }
     }
 
+    /**
+     * Locks the account row with {@code FOR NO KEY UPDATE}, so other password-reset operations on it wait. Before
+     * locking, sets PostgreSQL's {@code lock_timeout} for this transaction only (the same as {@code SET LOCAL}), so
+     * the wait is bounded by {@code app.password-reset.lock-timeout}. The JPA lock-timeout hint is not used because
+     * Hibernate's PostgreSQL dialect may ignore a positive timeout. A timeout is reported as
+     * {@link PasswordResetBusyException}.
+     */
+    @Override
+    public Optional<User> findForPasswordReset(Contact contact) {
+        entityManager.createNativeQuery("select set_config('lock_timeout', ?1, true)")
+                .setParameter(1, lockProperties.lockTimeout().toMillis() + "ms")
+                .getSingleResult();
+        try {
+            return switch (contact.channel()) {
+                case EMAIL -> users.findLockedByEmail(contact.address());
+                case PHONE -> users.findLockedByPhone(contact.address());
+            };
+        } catch (PessimisticLockingFailureException e) {
+            throw new PasswordResetBusyException(e);
+        }
+    }
+
+    @Override
+    public User update(User user) {
+        return users.save(user);
+    }
+
     private static RegistrationField conflictingField(DataIntegrityViolationException e) {
-        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            if (cause instanceof ConstraintViolationException cve) {
-                String constraint = cve.getConstraintName();
-                if (USERNAME_CONSTRAINT.equalsIgnoreCase(constraint)) {
-                    return RegistrationField.USERNAME;
-                }
-                if (EMAIL_CONSTRAINT.equalsIgnoreCase(constraint)) {
-                    return RegistrationField.EMAIL;
-                }
-                if (PHONE_CONSTRAINT.equalsIgnoreCase(constraint)) {
-                    return RegistrationField.PHONE;
-                }
-                return null;
-            }
+        String constraint = IntegrityViolations.constraintName(e);
+        if (USERNAME_CONSTRAINT.equalsIgnoreCase(constraint)) {
+            return RegistrationField.USERNAME;
+        }
+        if (EMAIL_CONSTRAINT.equalsIgnoreCase(constraint)) {
+            return RegistrationField.EMAIL;
+        }
+        if (PHONE_CONSTRAINT.equalsIgnoreCase(constraint)) {
+            return RegistrationField.PHONE;
         }
         return null;
     }

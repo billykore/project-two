@@ -4,6 +4,8 @@ import org.kore.myapp.core.entity.Session;
 import org.kore.myapp.core.port.SessionRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
+
 /**
  * {@link SessionRepository} backed by Spring Data JPA.
  */
@@ -19,5 +21,10 @@ public class JpaSessionRepository implements SessionRepository {
     @Override
     public Session add(Session session) {
         return sessions.save(session);
+    }
+
+    @Override
+    public int revokeAllForUser(long userId, Instant at) {
+        return sessions.revokeAllForUser(userId, at);
     }
 }

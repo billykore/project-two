@@ -12,6 +12,9 @@ with a clean architecture (ports & adapters), JWT, Flyway, and event-driven mess
   and phone numbers are unique.
 - **Authentication** — log in with username and password (BCrypt), receive a JWT (HS256), and record the session in
   the database.
+- **Forgot password** — request a one-time code by email or phone, then replace the password with it. The new
+  password follows the registration rules and may not be one of the last 3 passwords. A reset ends the account's
+  sessions. Delivery is a development stub for now (see [Forgot password](#forgot-password)).
 - **Trip booking** — a customer creates a trip with a pickup point, destination, service type, and payment method.
   A customer can have at most one unfinished trip, enforced by both the service and a unique index in the database.
 - **Trip offers** — a driver accepts a trip offer; the trip moves to `DRIVER_ASSIGNED` and the driver's status
@@ -35,7 +38,7 @@ Payment methods: `CASH`, `CREDIT_CARD`, `QRIS`.
 
 ## Tech stack
 
-- Java 17, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Security, OAuth2 Resource Server)
+- Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Security, OAuth2 Resource Server)
 - PostgreSQL 13+ with Flyway migrations
 - Apache Kafka for domain events
 - Lombok
@@ -109,7 +112,7 @@ succeeds; the event is not retried.
 
 ### Prerequisites
 
-- JDK 17+
+- JDK 25+
 - Docker (for PostgreSQL and Kafka), or local installations of both
 
 ### 1. Start PostgreSQL
@@ -134,6 +137,10 @@ cp .env.example .env
 
 ```bash
 echo "APP_JWT_SECRET=$(openssl rand -base64 32)" >> .env
+```
+
+```bash
+echo "APP_RESET_CODE_SECRET=$(openssl rand -base64 32)" >> .env
 ```
 
 Set `DB_PASSWORD` in `.env` too (`postgres` for the container above). `.env` is git-ignored and read by Spring on
@@ -176,6 +183,8 @@ environment variables or a local `.env` file (see `.env.example`):
 | `DB_USERNAME`             | —                                           | PostgreSQL user                            |
 | `DB_PASSWORD`             | —                                           | PostgreSQL password                        |
 | `APP_JWT_SECRET`          | —                                           | HMAC secret, Base64, at least 32 bytes     |
+| `APP_RESET_CODE_SECRET`   | —                                           | HMAC key for password-reset codes, Base64, at least 32 bytes (`openssl rand -base64 32`); the app does not start without it |
+| `APP_PASSWORD_RESET_LOG_CODES` | `false`                                | Development only: write reset codes to the application log. Leave `false` in production |
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092`                            | Kafka broker address                       |
 
 Other properties:
@@ -188,13 +197,19 @@ Other properties:
 | `app.kafka.publish-timeout`      | `5s`                                        | How long to wait for a Kafka ack           |
 | `app.fare.per-meter`             | `30`                                        | Rate per meter (IDR)                       |
 | `app.fare.minimum`               | `10000`                                     | Minimum fare (IDR)                         |
+| `app.password-reset.code-ttl`    | `5m`                                        | How long a reset code stays valid          |
+| `app.password-reset.max-attempts` | `5`                                        | Wrong codes before the current code is invalidated |
+| `app.password-reset.resend-interval` | `60s`                                   | Minimum time between two codes for one account |
+| `app.password-reset.max-codes-per-hour` | `5`                                  | Codes one account may be sent in a rolling hour |
+| `app.password-reset.lock-timeout` | `15s`                                      | How long a reset waits for another reset of the same account before answering `503` |
 
 > `access-token-ttl` is set to `10s` to make token expiry easy to test; raise it (for example to `15m`) when trying
 > the API by hand.
 
 ## API
 
-Every endpoint except `/auth/**` requires an `Authorization: Bearer <accessToken>` header. Errors are returned as
+Every endpoint except `/auth/**` requires an `Authorization: Bearer <accessToken>` header. A token sent to `/auth/**` anyway is
+ignored, even when it is expired or invalid. Errors are returned as
 [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`). On any endpoint, a
 missing or non-JSON request body gets `400` with the title `Malformed request`.
 
@@ -206,6 +221,8 @@ its `sub` claim, since the request can't be attributed to a user. Tokens issued 
 |--------|------------------------------------|----------------------------------------------|
 | `POST` | `/auth/register`                   | Create a customer account                    |
 | `POST` | `/auth/login`                      | Log in and receive an access token           |
+| `POST` | `/auth/password-reset/request`     | Send a one-time reset code by email or phone |
+| `POST` | `/auth/password-reset/confirm`     | Replace the password using the code          |
 | `POST` | `/trips`                           | Customer books a trip                        |
 | `POST` | `/driver/offers/{tripId}/accept`   | Driver accepts a trip offer                  |
 | `GET`  | `/hello/{username}`                | Sample endpoint for checking a token         |
@@ -238,6 +255,47 @@ All five fields are required:
   least 8 characters"}]`.
 - `409` (`Registration conflict`) lists the fields already in use in `conflicts`, for example `["username", "email"]`.
   Email and phone numbers are not verified, and logging in still uses the username only.
+
+### Forgot password
+
+Two public steps. First ask for a code with the email address or the phone number of the account (exactly one of
+the two):
+
+```bash
+curl -X POST http://localhost:8080/auth/password-reset/request \
+  -H 'Content-Type: application/json' \
+  -d '{"email": "budi@example.com"}'
+```
+
+It always answers `202` with `{"message": "If an account exists for this contact, a code has been sent to it."}`,
+whether or not an account matches, so it never reveals which contacts are registered. A code is 6 digits, valid for 5
+minutes, and usable once. A new code replaces the previous one. An account gets at most 1 code per 60 seconds and 5
+per hour; requests over the limit still answer `202` but send nothing.
+
+Then send the code with the new password. `email` or `phone` may be either contact detail of the account, whichever
+one received the code:
+
+```bash
+curl -X POST http://localhost:8080/auth/password-reset/confirm \
+  -H 'Content-Type: application/json' \
+  -d '{"email": "budi@example.com", "code": "004213", "newPassword": "newsecret99"}'
+```
+
+`204 No Content` means the password was replaced, the code is used up, and every session of the account has ended.
+No token is issued; log in again.
+
+- `400` (`Invalid password reset`) lists every invalid field in `errors`, like registration: a malformed contact or
+  code (`must be 6 digits`), or a new password that breaks the registration rules, equals the username
+  (`must not be the same as the username`), or is one of the account's last 3 passwords, the current one included
+  (`must not be one of your last 3 passwords`). A refused password does not use up the code or count as a wrong code.
+- `400` (`Invalid or expired code`) is the single answer for a wrong, expired, used, replaced, or exhausted code and
+  for an unknown contact. After 5 wrong codes the current code is invalidated.
+- `503` (`Password reset busy`, with `Retry-After: 1`) means another reset of the same account was still running; try
+  again.
+
+**Delivery is not connected to a real email or SMS provider yet.** By default nothing is sent and the request
+completes without a code. For development, set `APP_PASSWORD_RESET_LOG_CODES=true` and the code is written to the
+application log (look for `password reset code for EMAIL …`). Never enable it in production.
 
 ### Log in
 
@@ -298,6 +356,8 @@ another driver took it), the response is `409 Conflict`.
 |-----------------------|-------------------------------------------------------------------------------|
 | `users`               | User accounts (customers and drivers), with unique username, email, and phone |
 | `sessions`            | Login sessions; stores a SHA-256 hash of the token, not the token itself      |
+| `password_reset_codes` | One-time password-reset codes (HMAC hash only), with attempts, expiry, and when used or invalidated |
+| `password_history`    | The two passwords before the current one (hashes), to refuse reuse            |
 | `driver_profiles`     | Driver data: license, verification status, availability (`OFFLINE`/`ONLINE`/`ON_TRIP`) |
 | `service_types`       | Service types (`MYRIDE`, `MYCAR`)                                             |
 | `trips`               | Trip bookings, including a snapshot of distance and fare at booking time      |
@@ -326,7 +386,8 @@ The tests never read your `.env`: test-only settings, including a fake JWT signi
 | Domain and application-service unit tests | `TripTest`, `FareCalculatorTest`, `TripServiceTest`, `OfferServiceTest` | nothing (fixed `Clock` and `IdGenerator`) |
 | Architecture test | `ArchitectureTest`, `ArchitectureRulesSelfTest` | nothing |
 | Web-layer tests, one per controller | `TripControllerTest`, `AuthControllerTest`, … | nothing (`@WebMvcTest`) |
-| Persistence adapter integration tests | `JpaTripRepositoryIT`, … | PostgreSQL container |
+| Persistence adapter integration tests | `JpaTripRepositoryIT`, `JpaPasswordResetCodeRepositoryIT`, … | PostgreSQL container |
+| Password reset end to end | `PasswordResetFlowIT` (request, confirm, limits, history, sessions) | PostgreSQL and Kafka containers |
 | Event adapter integration test | `AfterCommitEventPublisherIT` | Kafka container |
 | Event payload contract | `EventJsonContractTest` against `src/test/resources/events/*.json` | nothing |
 
@@ -346,13 +407,15 @@ Done:
 - [x] Integration tests against real PostgreSQL and Kafka (Testcontainers) for the persistence and event adapters
 - [x] Web-layer tests for every endpoint
 - [x] Customer registration with unique username, email, and phone
+- [x] Forgot password with a one-time code (development delivery only)
 
 Not yet:
 
+- [ ] Real email and SMS delivery of reset codes
 - [ ] Driver onboarding
 - [ ] Road-route distance (currently a straight line, so shorter than the real distance)
 - [ ] Finding the nearest drivers and creating `trip_offers`
 - [ ] Endpoints to reject an offer, mark driver arrival, and start, complete, or cancel a trip
 - [ ] A scheduler to expire stale offers
-- [ ] Refresh tokens and logout (session revocation)
+- [ ] Refresh tokens and logout (a password reset already ends sessions, but issued access tokens stay valid until they expire)
 - [ ] Idempotency key on trip creation

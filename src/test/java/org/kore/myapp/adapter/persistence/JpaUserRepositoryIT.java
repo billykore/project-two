@@ -2,10 +2,14 @@ package org.kore.myapp.adapter.persistence;
 
 import org.junit.jupiter.api.Test;
 import org.kore.myapp.core.entity.User;
+import org.kore.myapp.core.exception.PasswordResetBusyException;
 import org.kore.myapp.core.exception.RegistrationConflictException;
 import org.kore.myapp.core.port.UserRepository;
+import org.kore.myapp.core.valueobject.Contact;
+import org.kore.myapp.core.valueobject.ContactChannel;
 import org.kore.myapp.core.valueobject.RegisterUserCommand;
 import org.kore.myapp.core.valueobject.RegistrationField;
+import jakarta.persistence.EntityManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,9 +18,11 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -47,6 +53,12 @@ class JpaUserRepositoryIT {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private SpringDataUserRepository springDataUsers;
+
+    @Autowired
+    private EntityManager entityManager;
 
     /** A new user whose username, email, and phone are all unique to this call. */
     private static User newUser() {
@@ -201,6 +213,101 @@ class JpaUserRepositoryIT {
         } finally {
             pool.shutdownNow();
             jdbc.update("delete from users where username in (?, ?)", first.getUsername(), second.getUsername());
+        }
+    }
+
+    // --- password reset: lookup by contact and the account lock ------------------------------------------------
+
+    @Test
+    void findForPasswordResetFindsAnAccountByEmailAndByPhone() {
+        User saved = users.add(newUser());
+
+        assertThat(users.findForPasswordReset(new Contact(ContactChannel.EMAIL, saved.getEmail())))
+                .get().extracting(User::getId).isEqualTo(saved.getId());
+        assertThat(users.findForPasswordReset(new Contact(ContactChannel.PHONE, saved.getPhone())))
+                .get().extracting(User::getId).isEqualTo(saved.getId());
+    }
+
+    @Test
+    void findForPasswordResetIsEmptyForAnUnknownAddress() {
+        assertThat(users.findForPasswordReset(
+                new Contact(ContactChannel.EMAIL, "nobody-" + UUID.randomUUID() + "@example.com"))).isEmpty();
+        assertThat(users.findForPasswordReset(new Contact(ContactChannel.PHONE, newPhone()))).isEmpty();
+    }
+
+    @Test
+    void anAccountWithNeitherEmailNorPhoneIsNeverFound() {
+        db.insertUser("legacy-reset");
+        db.flushAndClear();
+
+        assertThat(users.findForPasswordReset(new Contact(ContactChannel.EMAIL, "legacy@example.com"))).isEmpty();
+    }
+
+    @Test
+    void updatePersistsAChangedPassword() {
+        User saved = users.add(newUser());
+
+        saved.changePassword("new-bcrypt-hash");
+        users.update(saved);
+        db.flushAndClear();
+
+        assertThat(db.find(User.class, saved.getId()).getPassword()).isEqualTo("new-bcrypt-hash");
+    }
+
+    /**
+     * While one transaction holds the account, a second reset operation is reported as busy once the lock timeout
+     * has passed, and an unrelated insert that references the account (a login session) is not blocked.
+     * The repository is built here with a short timeout so the production {@code lock_timeout} path is exercised
+     * without a 15 s wait.
+     */
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void aSecondResetOperationOnALockedAccountIsBusyAfterTheTimeoutWhileSessionInsertsAreNotBlocked()
+            throws Exception {
+        Duration timeout = Duration.ofMillis(500);
+        UserRepository shortTimeout = new JpaUserRepository(
+                springDataUsers, entityManager, new PasswordResetLockProperties(timeout));
+        User saved = new TransactionTemplate(transactionManager).execute(status -> users.add(newUser()));
+        Contact contact = new Contact(ContactChannel.EMAIL, saved.getEmail());
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> holder = pool.submit(() -> tx.executeWithoutResult(status -> {
+                shortTimeout.findForPasswordReset(contact);
+                locked.countDown();
+                awaitQuietly(release);
+            }));
+            assertThat(locked.await(30, TimeUnit.SECONDS)).isTrue();
+
+            Future<?> sessionInsert = pool.submit(() -> tx.executeWithoutResult(status -> jdbc.update(
+                    "insert into sessions (user_id, token_hash, expires_at) values (?, ?, now() + interval '1 hour')",
+                    saved.getId(), "c".repeat(64))));
+            sessionInsert.get(10, TimeUnit.SECONDS);
+
+            long started = System.nanoTime();
+            assertThatThrownBy(() -> tx.executeWithoutResult(status -> shortTimeout.findForPasswordReset(contact)))
+                    .isInstanceOf(PasswordResetBusyException.class);
+            Duration waited = Duration.ofNanos(System.nanoTime() - started);
+            assertThat(waited).isGreaterThanOrEqualTo(timeout.minusMillis(100)).isLessThan(Duration.ofSeconds(10));
+
+            release.countDown();
+            holder.get(30, TimeUnit.SECONDS);
+            Optional<User> afterRelease = tx.execute(status -> shortTimeout.findForPasswordReset(contact));
+            assertThat(afterRelease).isPresent();
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+            jdbc.update("delete from users where id = ?", saved.getId());
+        }
+    }
+
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            latch.await(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 }

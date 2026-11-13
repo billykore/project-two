@@ -24,7 +24,7 @@ public class InvalidRegistrationException extends RuntimeException {
      */
     public InvalidRegistrationException(List<FieldError> errors) {
         super(errors.stream()
-                .map(e -> e.field().jsonName() + ": " + e.message())
+                .map(e -> e.field() + ": " + e.message())
                 .collect(Collectors.joining("; ")));
         this.errors = List.copyOf(errors);
     }

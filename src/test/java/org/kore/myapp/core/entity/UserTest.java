@@ -35,4 +35,24 @@ class UserTest {
         assertThatThrownBy(() -> User.register(command, " ")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> User.register(command, null)).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void changePasswordReplacesTheHashAndKeepsTheRestOfTheAccount() {
+        User user = User.register(command, "old-hash");
+
+        user.changePassword("new-hash");
+
+        assertThat(user.getPassword()).isEqualTo("new-hash");
+        assertThat(user.getUsername()).isEqualTo("budi");
+        assertThat(user.getEmail()).isEqualTo("budi@example.com");
+    }
+
+    @Test
+    void changePasswordRejectsABlankHashAndKeepsTheOldOne() {
+        User user = User.register(command, "old-hash");
+
+        assertThatThrownBy(() -> user.changePassword(" ")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> user.changePassword(null)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(user.getPassword()).isEqualTo("old-hash");
+    }
 }
