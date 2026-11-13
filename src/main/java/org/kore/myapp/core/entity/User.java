@@ -67,4 +67,17 @@ public class User {
                 .phone(command.phone())
                 .build();
     }
+
+    /**
+     * Replaces the password.
+     *
+     * @param newPasswordHash the one-way hash of the new password.
+     * @throws IllegalArgumentException if {@code newPasswordHash} is null or blank.
+     */
+    public void changePassword(String newPasswordHash) {
+        if (newPasswordHash == null || newPasswordHash.isBlank()) {
+            throw new IllegalArgumentException("Password hash is required");
+        }
+        this.password = newPasswordHash;
+    }
 }

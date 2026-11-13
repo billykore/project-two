@@ -2,7 +2,6 @@ package org.kore.myapp.core.valueobject;
 
 import org.kore.myapp.core.exception.InvalidRegistrationException;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -30,17 +29,9 @@ public record RegisterUserCommand(
         String phone
 ) {
     static final int USERNAME_MAX = 50;
-    static final int PASSWORD_MIN = 8;
-    static final int PASSWORD_MAX_CHARACTERS = 72;
-    static final int PASSWORD_MAX_BYTES = 72;
     static final int NAME_MAX = 100;
-    static final int EMAIL_MAX = 254;
 
     private static final Pattern USERNAME = Pattern.compile("[a-z0-9._-]{3," + USERNAME_MAX + "}");
-    private static final Pattern PHONE = Pattern.compile("\\+[0-9]{8,15}");
-    private static final String LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
-    private static final Pattern EMAIL = Pattern.compile(
-            "[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@(?:" + LABEL + "\\.)+" + LABEL);
 
     public RegisterUserCommand {
         name = name == null ? null : name.strip();
@@ -81,23 +72,11 @@ public record RegisterUserCommand(
      * @param validUsername the username if it is valid, so the password can be compared with it; otherwise null.
      */
     private static String passwordError(String password, String validUsername) {
-        if (password == null || password.isEmpty()) {
-            return "is required";
+        String formatError = PasswordRules.formatError(password);
+        if (formatError != null) {
+            return formatError;
         }
-        int characters = password.codePointCount(0, password.length());
-        if (characters < PASSWORD_MIN) {
-            return "must be at least " + PASSWORD_MIN + " characters";
-        }
-        if (characters > PASSWORD_MAX_CHARACTERS) {
-            return "must be at most " + PASSWORD_MAX_CHARACTERS + " characters";
-        }
-        if (password.getBytes(StandardCharsets.UTF_8).length > PASSWORD_MAX_BYTES) {
-            return "must be at most " + PASSWORD_MAX_BYTES + " bytes; non-ASCII characters count as more than one";
-        }
-        if (password.equals(validUsername)) {
-            return "must not be the same as the username";
-        }
-        return null;
+        return validUsername == null ? null : PasswordRules.usernameError(password, validUsername);
     }
 
     private static String nameError(String strippedName) {
@@ -114,20 +93,14 @@ public record RegisterUserCommand(
         if (normalizedEmail == null || normalizedEmail.isEmpty()) {
             return "is required";
         }
-        if (normalizedEmail.length() > EMAIL_MAX || !EMAIL.matcher(normalizedEmail).matches()) {
-            return "must be a valid email address";
-        }
-        return null;
+        return ContactRules.emailFormatError(normalizedEmail);
     }
 
     private static String phoneError(String phone) {
         if (phone == null || phone.isBlank()) {
             return "is required";
         }
-        if (!PHONE.matcher(phone).matches()) {
-            return "must be in international format, e.g. +6281234567890";
-        }
-        return null;
+        return ContactRules.phoneFormatError(phone);
     }
 
     private static void addIfPresent(List<FieldError> errors, RegistrationField field, String message) {

@@ -104,6 +104,22 @@ class PersistenceFixtures {
                 .executeUpdate();
     }
 
+    /**
+     * Inserts a reset code issued at the given time: open when {@code open} is true, otherwise already used.
+     */
+    void insertResetCode(long userId, Instant issuedAt, boolean open) {
+        entityManager.createNativeQuery("""
+                        insert into password_reset_codes
+                            (user_id, code_hash, channel, issued_at, expires_at, used_at)
+                        values (?1, ?2, 'EMAIL', ?3, ?4, ?5)""")
+                .setParameter(1, userId)
+                .setParameter(2, "a".repeat(64))
+                .setParameter(3, Timestamp.from(issuedAt))
+                .setParameter(4, Timestamp.from(issuedAt.plusSeconds(300)))
+                .setParameter(5, open ? null : Timestamp.from(issuedAt.plusSeconds(1)))
+                .executeUpdate();
+    }
+
     /** Removes a customer committed by a non-transactional test, together with their trips. */
     void deleteCustomer(long customerId) {
         entityManager.createNativeQuery("delete from trips where customer_id = ?1")

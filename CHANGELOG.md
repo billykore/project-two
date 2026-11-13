@@ -10,6 +10,15 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
 
 ### Added
 
+- Forgot password: `POST /auth/password-reset/request` sends a 6-digit one-time code to the email address or phone
+  number of an account (always answering `202`, so it never reveals which contacts exist), and
+  `POST /auth/password-reset/confirm` replaces the password with it. Codes last 5 minutes, work once, and are
+  invalidated after 5 wrong attempts; an account gets at most 1 code per 60 seconds and 5 per hour. The new password
+  follows the registration rules and may not be one of the last 3 passwords. A successful reset ends the account's
+  sessions. Codes are stored only as an HMAC hash, which needs the new secret `APP_RESET_CODE_SECRET`. Migration
+  `V12` adds `password_reset_codes` and `password_history`. Delivery is a development stub
+  (`APP_PASSWORD_RESET_LOG_CODES=true` logs the code); real email and SMS providers are not connected yet. Specs in
+  `specs/003-forgot-password/`.
 - `POST /auth/register`: self-service customer registration with a username, password, name, email address, and
   phone number. Usernames, emails (ignoring case), and phone numbers are unique, including under simultaneous
   requests; invalid input and conflicts are answered with Problem Details naming each field. Migration `V11` adds
@@ -28,6 +37,9 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
 
 ### Changed
 
+- The registration password and contact rules (email, phone) are now shared with the password reset through
+  `PasswordRules` and `ContactRules`; registration behaves and answers exactly as before. `FieldError` holds the
+  client-facing field name instead of an enum.
 - Java 25 (the current LTS release) replaces Java 17: `java.version` in `pom.xml`, the CI JDK, and the README
   prerequisites. Building now needs JDK 25 or newer.
 - Imports are explicit: all wildcard imports (`import lombok.*;`, `import jakarta.persistence.*;`, …) were replaced
@@ -56,6 +68,9 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
 
 ### Fixed
 
+- `/auth/**` (login, registration, password reset) now ignores a Bearer token sent with the request. Before, an
+  expired or invalid token turned these public requests into `401 Unauthorized`; protected endpoints still reject
+  such tokens.
 - A token without a numeric `sub` claim now gets `401 Unauthorized` on `POST /trips` and
   `POST /driver/offers/{tripId}/accept`. Previously `POST /trips` tried to book the trip for customer `0` and both
   endpoints could fail with `500`.

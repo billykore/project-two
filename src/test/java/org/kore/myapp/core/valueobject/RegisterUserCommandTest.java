@@ -108,7 +108,7 @@ class RegisterUserCommandTest {
     void passwordCountsAnEmojiAsOneCharacterButFourBytes() {
         assertValid("budi", "😀".repeat(18), "Budi", "budi@example.com", "+6281234567890");
         assertThat(errorsOf("budi", "😀".repeat(19), "Budi", "budi@example.com", "+6281234567890"))
-                .extracting(FieldError::field).containsExactly(RegistrationField.PASSWORD);
+                .extracting(FieldError::field).containsExactly("password");
     }
 
     @Test
@@ -227,8 +227,7 @@ class RegisterUserCommandTest {
         List<FieldError> errors = errorsOf("Bad Name!", "short", null, "budi@", "0812");
 
         assertThat(errors).extracting(FieldError::field).containsExactly(
-                RegistrationField.USERNAME, RegistrationField.PASSWORD, RegistrationField.NAME,
-                RegistrationField.EMAIL, RegistrationField.PHONE);
+                "username", "password", "name", "email", "phone");
     }
 
     @Test
@@ -259,7 +258,7 @@ class RegisterUserCommandTest {
     private static void assertInvalid(RegistrationField field, String username, String password, String name,
                                       String email, String phone) {
         assertThat(errorsOf(username, password, name, email, phone))
-                .extracting(FieldError::field).containsExactly(field);
+                .extracting(FieldError::field).containsExactly(field.jsonName());
     }
 
     private static List<FieldError> errorsOf(String username, String password, String name, String email,

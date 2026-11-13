@@ -2,6 +2,7 @@ package org.kore.myapp.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.kore.myapp.adapter.security.JwtProperties;
+import org.kore.myapp.adapter.security.ResetCodeHasherProperties;
 import org.kore.myapp.api.handler.JsonAuthenticationEntryPoint;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -20,6 +21,8 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 
 import javax.crypto.SecretKey;
@@ -27,11 +30,24 @@ import javax.crypto.spec.SecretKeySpec;
 import java.util.Base64;
 
 @Configuration
-@EnableConfigurationProperties({JwtProperties.class, FareProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, FareProperties.class, ResetCodeHasherProperties.class})
 public class SecurityConfig {
 
+    /**
+     * The {@code /auth/**} endpoints are public, so a token sent to them is ignored rather than checked. Otherwise an
+     * expired or invalid token, which a client may still hold, would turn a public request into a 401.
+     */
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http, JsonAuthenticationEntryPoint entryPoint) {
+    BearerTokenResolver bearerTokenResolver() {
+        DefaultBearerTokenResolver resolver = new DefaultBearerTokenResolver();
+        return request -> request.getRequestURI().startsWith(request.getContextPath() + "/auth/")
+                ? null
+                : resolver.resolve(request);
+    }
+
+    @Bean
+    SecurityFilterChain filterChain(HttpSecurity http, JsonAuthenticationEntryPoint entryPoint,
+                                    BearerTokenResolver bearerTokenResolver) {
         http.
                 csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -39,6 +55,7 @@ public class SecurityConfig {
                         .requestMatchers("/auth/**", "/error").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
+                        .bearerTokenResolver(bearerTokenResolver)
                         .jwt(Customizer.withDefaults())
                         .authenticationEntryPoint(entryPoint))
                 .exceptionHandling(e -> e

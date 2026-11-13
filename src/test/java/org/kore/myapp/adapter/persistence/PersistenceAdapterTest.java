@@ -2,6 +2,7 @@ package org.kore.myapp.adapter.persistence;
 
 import org.kore.myapp.TestcontainersConfiguration;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 
@@ -26,7 +27,10 @@ import java.lang.annotation.Target;
         JpaDriverProfileRepository.class,
         JpaUserRepository.class,
         JpaSessionRepository.class,
-        JpaServiceTypeRepository.class
+        JpaServiceTypeRepository.class,
+        JpaPasswordResetCodeRepository.class,
+        JpaPasswordHistoryRepository.class
 })
+@EnableConfigurationProperties(PasswordResetLockProperties.class)
 @interface PersistenceAdapterTest {
 }

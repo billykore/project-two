@@ -105,6 +105,24 @@ class AuthControllerTest {
     }
 
     @Test
+    void registerAndLoginIgnoreAnInvalidOrExpiredTokenSentAnyway() throws Exception {
+        when(registrationUseCase.register(any(RegisterUserCommand.class))).thenReturn(User.builder()
+                .id(42L).username("budi").name("Budi").email("budi@example.com").phone("+6281234567890")
+                .password("bcrypt-hash").build());
+        when(authUseCase.login("budi", "secret123")).thenReturn(
+                new Token(SESSION_ID, "jwt-value", Instant.parse("2026-11-11T08:00:10Z")));
+
+        mvc.perform(register("""
+                        {"username": "budi", "password": "secret123", "name": "Budi",
+                         "email": "budi@example.com", "phone": "+6281234567890"}""")
+                        .header("Authorization", "Bearer not-a-jwt"))
+                .andExpect(status().isCreated());
+        mvc.perform(login("{\"username\": \"budi\", \"password\": \"secret123\"}")
+                        .header("Authorization", "Bearer not-a-jwt"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void registerIgnoresUnknownPropertiesSuchAsARole() throws Exception {
         when(registrationUseCase.register(any(RegisterUserCommand.class))).thenReturn(User.builder()
                 .id(7L).username("ani").name("Ani").email("ani@example.com").phone("+6281200000000").build());
