@@ -153,4 +153,20 @@ class PasswordResetCodeTest {
         assertThat(used.getUsedAt()).isEqualTo(NOW.plusSeconds(1));
         assertThat(invalidated.getInvalidatedAt()).isEqualTo(NOW.plusSeconds(1));
     }
+
+    /**
+     * PostgreSQL keeps microseconds and rounds anything finer, which could push a stored expiry past the real one.
+     * Times are truncated to microseconds when the code is issued, so what is stored is exactly what was computed.
+     */
+    @Test
+    void issueTruncatesTimesToMicrosecondsSoTheStoredExpiryIsExact() {
+        Instant withNanos = NOW.plusNanos(123_456_789);
+
+        PasswordResetCode code = PasswordResetCode.issue(7L, HASH, ContactChannel.EMAIL, withNanos, TTL);
+
+        Instant micros = NOW.plusNanos(123_456_000);
+        assertThat(code.getIssuedAt()).isEqualTo(micros);
+        assertThat(code.getExpiresAt()).isEqualTo(micros.plus(TTL));
+        assertThat(code.isUsable(withNanos.plus(TTL))).isFalse();
+    }
 }

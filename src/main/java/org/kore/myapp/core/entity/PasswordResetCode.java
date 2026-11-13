@@ -19,6 +19,7 @@ import org.kore.myapp.core.valueobject.ContactChannel;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 /**
  * A one-time code issued to an account so its owner can reset a forgotten password.
@@ -81,12 +82,15 @@ public class PasswordResetCode {
         if (codeHash == null || codeHash.isBlank()) {
             throw new IllegalArgumentException("Code hash is required");
         }
+        // The database keeps microseconds and rounds finer values, which could move the stored expiry later than
+        // the real one; truncating first makes the stored times exactly the ones the rules use.
+        Instant issuedAt = now.truncatedTo(ChronoUnit.MICROS);
         return PasswordResetCode.builder()
                 .userId(userId)
                 .codeHash(codeHash)
                 .channel(channel)
-                .issuedAt(now)
-                .expiresAt(now.plus(ttl))
+                .issuedAt(issuedAt)
+                .expiresAt(issuedAt.plus(ttl))
                 .build();
     }
 
