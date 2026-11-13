@@ -28,21 +28,35 @@ import org.springframework.security.web.SecurityFilterChain;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.util.Base64;
+import java.util.List;
 
 @Configuration
 @EnableConfigurationProperties({JwtProperties.class, FareProperties.class, ResetCodeHasherProperties.class})
 public class SecurityConfig {
 
     /**
-     * The {@code /auth/**} endpoints are public, so a token sent to them is ignored rather than checked. Otherwise an
-     * expired or invalid token, which a client may still hold, would turn a public request into a 401.
+     * Paths anyone may call. The API documentation paths only answer when {@code springdoc.api-docs.enabled} and
+     * {@code springdoc.swagger-ui.enabled} are true (off unless {@code APP_API_DOCS_ENABLED=true}); otherwise they
+     * are 404.
+     */
+    private static final String[] PUBLIC_PATHS = {
+            "/auth/**", "/error", "/v3/api-docs", "/v3/api-docs/**", "/v3/api-docs.yaml",
+            "/swagger-ui.html", "/swagger-ui/**"
+    };
+
+    private static final List<String> PUBLIC_PREFIXES = List.of("/auth/", "/v3/api-docs", "/swagger-ui");
+
+    /**
+     * Public endpoints ignore a token sent to them rather than checking it. Otherwise an expired or invalid token,
+     * which a client may still hold, would turn a public request into a 401.
      */
     @Bean
     BearerTokenResolver bearerTokenResolver() {
         DefaultBearerTokenResolver resolver = new DefaultBearerTokenResolver();
-        return request -> request.getRequestURI().startsWith(request.getContextPath() + "/auth/")
-                ? null
-                : resolver.resolve(request);
+        return request -> {
+            String path = request.getRequestURI().substring(request.getContextPath().length());
+            return PUBLIC_PREFIXES.stream().anyMatch(path::startsWith) ? null : resolver.resolve(request);
+        };
     }
 
     @Bean
@@ -52,7 +66,7 @@ public class SecurityConfig {
                 csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**", "/error").permitAll()
+                        .requestMatchers(PUBLIC_PATHS).permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
                         .bearerTokenResolver(bearerTokenResolver)

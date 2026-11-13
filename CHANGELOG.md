@@ -10,6 +10,12 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
 
 ### Added
 
+- OpenAPI 3.1 documentation generated from the controllers with springdoc (`springdoc-openapi-starter-webmvc-ui`
+  3.2.0). It covers every endpoint, Problem Details error responses with examples, and public versus Bearer-protected
+  operations. `docs/openapi.yaml` is checked in, and `OpenApiDocumentTest` keeps it identical to the generated
+  document. With `APP_API_DOCS_ENABLED=true` (off by default), the app serves `/v3/api-docs`, `/v3/api-docs.yaml`,
+  and Swagger UI at `/swagger-ui.html`; these paths are public and ignore a Bearer token. Plan in
+  `specs/004-openapi-docs/`.
 - Forgot password: `POST /auth/password-reset/request` sends a 6-digit one-time code to the email address or phone
   number of an account (always answering `202`, so it never reveals which contacts exist), and
   `POST /auth/password-reset/confirm` replaces the password with it. Codes last 5 minutes, work once, and are

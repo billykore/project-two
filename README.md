@@ -185,6 +185,7 @@ environment variables or a local `.env` file (see `.env.example`):
 | `APP_JWT_SECRET`          | —                                           | HMAC secret, Base64, at least 32 bytes     |
 | `APP_RESET_CODE_SECRET`   | —                                           | HMAC key for password-reset codes, Base64, at least 32 bytes (`openssl rand -base64 32`); the app does not start without it |
 | `APP_PASSWORD_RESET_LOG_CODES` | `false`                                | Development only: write reset codes to the application log. Leave `false` in production |
+| `APP_API_DOCS_ENABLED`    | `false`                                     | Serve the OpenAPI document and Swagger UI (see [API](#api)). Leave `false` in production |
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092`                            | Kafka broker address                       |
 
 Other properties:
@@ -216,6 +217,12 @@ missing or non-JSON request body gets `400` with the title `Malformed request`.
 A missing, invalid, or expired token gets `401 Unauthorized` with a `WWW-Authenticate: Bearer` header. `POST /trips`
 and `POST /driver/offers/{tripId}/accept` also answer `401` when an otherwise valid token has no numeric user id in
 its `sub` claim, since the request can't be attributed to a user. Tokens issued by `/auth/login` always carry one.
+
+The full contract is in [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.1). It is generated from the controllers
+by [springdoc](https://springdoc.org/), and `OpenApiDocumentTest` fails when the checked-in file no longer matches;
+the test then writes the new document to `target/openapi.yaml` to copy over. With `APP_API_DOCS_ENABLED=true` the
+running app also serves it at `/v3/api-docs` (JSON) and `/v3/api-docs.yaml`, with Swagger UI at
+<http://localhost:8080/swagger-ui.html>.
 
 | Method | Path                               | Description                                  |
 |--------|------------------------------------|----------------------------------------------|
