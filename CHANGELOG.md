@@ -28,6 +28,8 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
 
 ### Changed
 
+- Java 25 (the current LTS release) replaces Java 17: `java.version` in `pom.xml`, the CI JDK, and the README
+  prerequisites. Building now needs JDK 25 or newer.
 - Imports are explicit: all wildcard imports (`import lombok.*;`, `import jakarta.persistence.*;`, …) were replaced
   by the classes each file uses. `ImportStyleTest` fails the build if one comes back, and `.editorconfig` stops IDEs
   from generating them.

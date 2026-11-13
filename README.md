@@ -35,7 +35,7 @@ Payment methods: `CASH`, `CREDIT_CARD`, `QRIS`.
 
 ## Tech stack
 
-- Java 17, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Security, OAuth2 Resource Server)
+- Java 25, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Security, OAuth2 Resource Server)
 - PostgreSQL 13+ with Flyway migrations
 - Apache Kafka for domain events
 - Lombok
@@ -109,7 +109,7 @@ succeeds; the event is not retried.
 
 ### Prerequisites
 
-- JDK 17+
+- JDK 25+
 - Docker (for PostgreSQL and Kafka), or local installations of both
 
 ### 1. Start PostgreSQL

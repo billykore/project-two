@@ -1,26 +1,24 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 2.0.0 → 2.0.1
-Bump rationale: PATCH. Clarifications with no change in intent, found while implementing feature
-001-hexagonal-architecture-compliance (recorded in its plan's Complexity Tracking):
-- IV: the role table now says where `@ConfigurationProperties` records live. Adapter-specific ones stay with
-  their adapter (the dependency rule forbids `adapter` → `config`); application-wide ones stay in `config`.
-- VIII: the mapping exception now names provider-specific mapping annotations (such as Hibernate's
-  `@JdbcTypeCode`, `@CreationTimestamp`, `@UpdateTimestamp`), provided nothing in the business rules, responses,
-  or events reads a value they generate.
+Version change: 2.0.1 → 2.0.2
+Bump rationale: PATCH. Technology & Quality Standards: the runtime moves from Java 17 to Java 25, the current LTS
+release and the newest version Spring Boot 4.1 officially supports. No principle changes.
 
-Modified principles: IV (role table wording), VIII (mapping exception wording)
+Modified principles: none
 Added sections: none
 Removed sections: none
 
 Templates requiring updates:
-- ✅ .specify/templates/plan-template.md: reviewed; no change (Constitution Check wording still holds)
-- ✅ .specify/templates/tasks-template.md: reviewed; no change
-- ✅ .specify/templates/spec-template.md: reviewed; no change
-- ✅ README.md: Architecture section rewritten for the hexagonal layout by feature 001
+- ✅ .specify/templates/plan-template.md, tasks-template.md, spec-template.md: reviewed; no change (no Java version)
+- ✅ README.md: stack and prerequisites now say Java 25
+- ✅ pom.xml and .github/workflows/ci.yml: build and CI target Java 25
 
-Previous amendment (1.0.0 → 2.0.0, MAJOR): Principle IV redefined to forbid framework types in ports; Principles
+Previous amendment (2.0.0 → 2.0.1, PATCH): wording clarifications to IV (where `@ConfigurationProperties` records
+live) and VIII (provider-specific mapping annotations), found while implementing feature
+001-hexagonal-architecture-compliance.
+
+Earlier amendment (1.0.0 → 2.0.0, MAJOR): Principle IV redefined to forbid framework types in ports; Principles
 VI–VIII added.
 
 Follow-up TODOs:
@@ -220,7 +218,7 @@ own, and it is the part of the system that carries the business value.
 
 ## Technology & Quality Standards
 
-- **Runtime**: Java 17, Spring Boot 4.1 (Web MVC, Data JPA, Validation, Security, OAuth2 Resource Server).
+- **Runtime**: Java 25 (LTS), Spring Boot 4.1 (Web MVC, Data JPA, Validation, Security, OAuth2 Resource Server).
 - **Architecture**: hexagonal (ports & adapters), per Principles IV, VI, VII, and VIII.
 - **Persistence**: PostgreSQL with Flyway migrations; optimistic locking via `version` columns where concurrent
   updates are possible; Spring Data repositories are implementation details of `adapter/persistence`.
@@ -268,4 +266,4 @@ own, and it is the part of the system that carries the business value.
   exceptions live in the plan's Complexity Tracking table and SHOULD be paid down with a follow-up task.
 - Runtime development guidance (how to run, configure, and call the app) lives in `README.md`.
 
-**Version**: 2.0.1 | **Ratified**: 2026-11-11 | **Last Amended**: 2026-11-11
+**Version**: 2.0.2 | **Ratified**: 2026-11-11 | **Last Amended**: 2026-11-13
