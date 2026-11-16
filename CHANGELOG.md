@@ -3,10 +3,13 @@
 All notable changes to this project are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-No version has been released or tagged yet, so entries are grouped by date. Add new changes under
-**Unreleased**; when a version is tagged, rename that section to the version number and date.
+Versions follow a JetBrains-style `YEAR.RELEASE.PATCH` scheme (for example `2026.3.0`), and each version has a
+matching git tag. Add new changes under **Unreleased**; when a version is tagged, move them into a new section named
+after the version number and date.
 
 ## [Unreleased]
+
+## [2026.3.0] - 2026-11-16
 
 ### Added
 
@@ -86,9 +89,9 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
   once (see README, "Run the application").
 - `README.md` now explains that `POST /trips` takes the service type name (`MyRide`, `MyCar`), not the database code
   (`MYRIDE`, `MYCAR`).
-- The 2026-11-11 entry about one unfinished trip per customer now lists `ON_TRIP` alongside the other statuses.
+- The 2026.2.0 entry about one unfinished trip per customer now lists `ON_TRIP` alongside the other statuses.
 
-## 2026-11-11
+## [2026.2.0] - 2026-11-11
 
 ### Added
 
@@ -129,7 +132,7 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
   used anywhere.
 - `.gitignore` now excludes `.env` files, keys and certificates, credential files, logs and dumps, and OS files.
 
-## 2026-10-26
+## [2026.1.0] - 2026-10-26
 
 ### Added
 
@@ -141,3 +144,8 @@ No version has been released or tagged yet, so entries are grouped by date. Add 
 - RFC 9457 problem-detail error responses.
 - PostgreSQL schema managed by Flyway: `users`, `sessions`, `driver_profiles`, `service_types` (seeded with `MYRIDE`
   and `MYCAR`), and `trips`.
+
+[Unreleased]: https://github.com/billykore/project-two/compare/2026.3.0...HEAD
+[2026.3.0]: https://github.com/billykore/project-two/compare/2026.2.0...2026.3.0
+[2026.2.0]: https://github.com/billykore/project-two/compare/2026.1.0...2026.2.0
+[2026.1.0]: https://github.com/billykore/project-two/releases/tag/2026.1.0
